@@ -123,18 +123,17 @@ fn item(loop_ref: Rc<Window>, iter: usize, data: Vec<u8>, mimetype: String) -> g
         loop_ref.close();
     });
     item_box.add_controller(gesture_click);
-    // add shit
     if mimetype.contains("image") {
-        let mimetype = mimetype.trim_start_matches("image/");
-        match mimetype {
-            "png" => {
-                let mut image = Image::new();
-                image.set_height_request(300);
-                set_image(data, &mut image);
-                item_box.append(&image);
-            }
-            _ => (),
-        }
+        // let mimetype = mimetype.trim_start_matches("image/");
+        // match mimetype {
+        //     "png" => {
+        let mut image = Image::new();
+        image.set_height_request(300);
+        set_image(data, &mut image);
+        item_box.append(&image);
+        //     }
+        //     _ => (),
+        // }
     } else if mimetype.contains("text") {
         let text = Label::new(Some(&String::from_utf8_lossy(&data)));
         item_box.append(&text);
@@ -143,32 +142,11 @@ fn item(loop_ref: Rc<Window>, iter: usize, data: Vec<u8>, mimetype: String) -> g
 }
 
 fn set_image(data: Vec<u8>, image: &mut Image) {
-    let mut pixbuf: Option<Pixbuf> = None;
-    let resize_pixbuf =
-        |pixbuf: Pixbuf| pixbuf.scale_simple(500, 500, gtk::gdk_pixbuf::InterpType::Bilinear);
-
     let bytes = gtk::glib::Bytes::from(&data);
     if bytes.is_empty() {
         return;
     }
-    // pixbuf = Some(Pixbuf::from_xpm_data(&data).unwrap());
-    // Pixbuf::from_stream
-    //  pixbuf = Some(Pixbuf::from_bytes(
-    //      &bytes,
-    //      gtk::gdk_pixbuf::Colorspace::Rgb,
-    //      false,
-    //      8,
-    //      200,
-    //      200,
-    //      3 * 200,
-    //      // image_data.has_alpha,
-    //      // image_data.bits_per_sample,
-    //      // image_data.width,
-    //      // image_data.height,
-    //      // image_data.rowstride,
-    //  ));
     let stream = MemoryInputStream::from_bytes(&bytes);
-    let mut pixbuf = Pixbuf::from_stream(&stream, gio::Cancellable::NONE).unwrap();
-    // pixbuf = resize_pixbuf(pixbuf).unwrap();
+    let pixbuf = Pixbuf::from_stream(&stream, gio::Cancellable::NONE).unwrap();
     image.set_from_pixbuf(Some(&pixbuf));
 }
