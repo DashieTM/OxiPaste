@@ -1,0 +1,27 @@
+[package]
+name = "oxipaste"
+version = "0.1.0"
+edition = "2021"
+description = "A clipboard manager daemon written in Rust."
+license = "GPL-3.0-only"
+
+[[bin]]
+name = "oxipaste_daemon"
+path = "src/daemon/main.rs"
+
+[[bin]]
+name = "oxipaste"
+path = "src/ui/main.rs"
+
+[[bin]]
+name = "command_runner"
+path = "src/command_runner/main.rs"
+
+[dependencies]
+wl-clipboard-rs = "0.8.0"
+dbus = "0.9.7"
+dbus-crossroads = "0.5.2"
+glib = "0.19.0"
+gtk = { version = "0.7.3", package = "gtk4" }
+gtk4-layer-shell = "0.2.0"
+adw = { version = "0.5.3", package = "libadwaita" }
