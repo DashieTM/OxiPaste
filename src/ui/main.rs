@@ -3,11 +3,14 @@ pub mod item;
 use adw::{prelude::AdwWindowExt, Application, Window};
 use dbus::{arg::RefArg, blocking::Connection};
 use gtk::{
+    builders::ImageBuilder,
+    gdk_pixbuf::Pixbuf,
+    gio::{self, MemoryInputStream},
     prelude::{
         ApplicationExt, ApplicationExtManual, BoxExt, ButtonExt, GtkApplicationExt, GtkWindowExt,
         WidgetExt,
     },
-    Button, GestureClick, Label, Orientation,
+    Button, GestureClick, Image, Label, Orientation,
 };
 use gtk4_layer_shell::{Edge, LayerShell};
 use std::{process::Command, rc::Rc, time::Duration};
@@ -34,20 +37,10 @@ fn run_ui(app: &Application) {
     app.add_window(&*window);
     let all_items_box = gtk::Box::new(Orientation::Vertical, 5);
     let items = get_items();
-    for (iter, (data, _)) in items.into_iter().enumerate() {
+    for (iter, (data, mimetype)) in items.into_iter().enumerate() {
         let loop_ref = window_ref.clone();
         // TODO handle images etc
-        let item_box = gtk::Box::new(Orientation::Vertical, 5);
-        let gesture_click = GestureClick::new();
-        let text = Label::new(Some(&String::from_utf8_lossy(&data)));
-        item_box.append(&text);
-        gesture_click.connect_pressed(move |_, _, _, _| {
-            loop_ref.hide();
-            copy_to_clipboard(iter); //.expect("wat");
-            loop_ref.close();
-        });
-        item_box.add_controller(gesture_click);
-        all_items_box.append(&item_box);
+        all_items_box.append(&item(loop_ref, iter, data, mimetype));
     }
 
     window.set_content(Some(&all_items_box));
@@ -118,4 +111,64 @@ fn delete_index(index: usize) -> bool {
         return false;
     }
     res.unwrap().0
+}
+
+fn item(loop_ref: Rc<Window>, iter: usize, data: Vec<u8>, mimetype: String) -> gtk::Box {
+    let item_box = gtk::Box::new(Orientation::Vertical, 10);
+
+    let gesture_click = GestureClick::new();
+    gesture_click.connect_pressed(move |_, _, _, _| {
+        loop_ref.hide();
+        copy_to_clipboard(iter); //.expect("wat");
+        loop_ref.close();
+    });
+    item_box.add_controller(gesture_click);
+    // add shit
+    if mimetype.contains("image") {
+        let mimetype = mimetype.trim_start_matches("image/");
+        match mimetype {
+            "png" => {
+                let mut image = Image::new();
+                image.set_height_request(300);
+                set_image(data, &mut image);
+                item_box.append(&image);
+            }
+            _ => (),
+        }
+    } else if mimetype.contains("text") {
+        let text = Label::new(Some(&String::from_utf8_lossy(&data)));
+        item_box.append(&text);
+    }
+    item_box
+}
+
+fn set_image(data: Vec<u8>, image: &mut Image) {
+    let mut pixbuf: Option<Pixbuf> = None;
+    let resize_pixbuf =
+        |pixbuf: Pixbuf| pixbuf.scale_simple(500, 500, gtk::gdk_pixbuf::InterpType::Bilinear);
+
+    let bytes = gtk::glib::Bytes::from(&data);
+    if bytes.is_empty() {
+        return;
+    }
+    // pixbuf = Some(Pixbuf::from_xpm_data(&data).unwrap());
+    // Pixbuf::from_stream
+    //  pixbuf = Some(Pixbuf::from_bytes(
+    //      &bytes,
+    //      gtk::gdk_pixbuf::Colorspace::Rgb,
+    //      false,
+    //      8,
+    //      200,
+    //      200,
+    //      3 * 200,
+    //      // image_data.has_alpha,
+    //      // image_data.bits_per_sample,
+    //      // image_data.width,
+    //      // image_data.height,
+    //      // image_data.rowstride,
+    //  ));
+    let stream = MemoryInputStream::from_bytes(&bytes);
+    let mut pixbuf = Pixbuf::from_stream(&stream, gio::Cancellable::NONE).unwrap();
+    // pixbuf = resize_pixbuf(pixbuf).unwrap();
+    image.set_from_pixbuf(Some(&pixbuf));
 }
