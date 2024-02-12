@@ -60,7 +60,7 @@ pub fn main() -> adw::glib::ExitCode {
 
 fn load_css(css_string: &String) {
     let context_provider = gtk::CssProvider::new();
-    if css_string.is_empty() {
+    if !css_string.is_empty() {
         context_provider.load_from_path(css_string);
     }
 
@@ -302,6 +302,9 @@ fn item(loop_ref: Rc<ApplicationWindow>, iter: usize, data: Vec<u8>, mimetype: S
     let delete_button = Button::new();
     delete_button.add_css_class("delete-button");
     delete_button.set_can_focus(false);
+    delete_button.set_label("x");
+    delete_button.set_vexpand(false);
+    delete_button.set_valign(gtk::Align::Start);
     delete_button.connect_clicked(clone!(@strong item_box => move |_| {
         delete_index(iter);
         item_box.unparent();
