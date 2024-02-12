@@ -1,10 +1,6 @@
 use dbus::blocking::Connection;
-use std::env;
-use std::io::Read;
 use std::time::Duration;
-use wl_clipboard_rs::paste::{get_contents, ClipboardType, Error, MimeType, Seat};
 pub fn main() {
-    // println!("called");
     let conn = Connection::new_session().unwrap();
     let proxy = conn.with_proxy(
         "org.Xetibo.OxiPasteDaemon",

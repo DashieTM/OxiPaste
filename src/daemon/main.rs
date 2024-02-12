@@ -54,10 +54,10 @@ fn main() {
                 Command::DeleteAll => items.clear(),
                 Command::GetLatest => reverse_sender
                     .send(ReverseCommand::SendLatest(paste_latest(&mut items)))
-                    .expect("wat"),
+                    .expect("Could not send command"),
                 Command::GetAll => reverse_sender
                     .send(ReverseCommand::SendAll(items.clone().into_iter().collect()))
-                    .expect("wat"),
+                    .expect("Could not send command"),
                 Command::Paste(index) => copy_to_clipboard(&items, index),
                 Command::PasteAndDelete(index) => {
                     copy_to_clipboard(&items, index);
@@ -98,9 +98,8 @@ fn get_items(items: &mut IndexMap<Vec<u8>, String>) {
     let result = get_contents(ClipboardType::Regular, Seat::Unspecified, MimeType::Any);
     match result {
         Ok((mut pipe, mimetype)) => {
-            println!("type: {}", &mimetype);
             let mut contents = vec![];
-            pipe.read_to_end(&mut contents).expect("grengeng");
+            pipe.read_to_end(&mut contents).expect("Could not read from pipe");
             if items.get(&contents).is_some() {
                 return;
             }
@@ -118,7 +117,6 @@ fn get_items(items: &mut IndexMap<Vec<u8>, String>) {
 fn start_wl_copy_runner() {
     std::process::Command::new("wl-paste")
         .args([
-            // "-p",
             "-w",
             "/home/dashie/gits/OxiPaste/target/release/command_runner",
         ])

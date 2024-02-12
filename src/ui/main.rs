@@ -1,5 +1,3 @@
-pub mod item;
-
 use adw::{prelude::AdwApplicationWindowExt, Application, ApplicationWindow};
 use dbus::blocking::Connection;
 use directories_next as dirs;
@@ -130,7 +128,7 @@ fn run_ui(app: &Application) {
                 .last_child()
                 .unwrap()
                 .dynamic_cast::<gtk::Box>()
-                .expect("brudi what");
+                .expect("Could not cast to gtk box.");
             loop {
                 let child = boxy.first_child();
                 if child.is_none() {

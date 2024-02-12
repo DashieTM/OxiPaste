@@ -32,7 +32,10 @@ pub fn run(sender: Sender<Command>, receiver: Receiver<ReverseCommand>) {
             ("index",),
             ("reply",),
             move |_, data: &mut DaemonData, (index,): (u32,)| {
-                let res = data.sender.send(Command::PasteAndDelete(index as usize)).is_ok();
+                let res = data
+                    .sender
+                    .send(Command::PasteAndDelete(index as usize))
+                    .is_ok();
                 Ok((res,))
             },
         );
@@ -42,7 +45,9 @@ pub fn run(sender: Sender<Command>, receiver: Receiver<ReverseCommand>) {
             ("reply",),
             move |_, data: &mut DaemonData, ()| {
                 let mut response = Vec::new();
-                data.sender.send(Command::GetAll).expect("peng");
+                data.sender
+                    .send(Command::GetAll)
+                    .expect("Could not send command");
                 let res = data.receiver.recv();
                 if let Ok(ReverseCommand::SendAll(items)) = res {
                     response = items;
@@ -56,7 +61,9 @@ pub fn run(sender: Sender<Command>, receiver: Receiver<ReverseCommand>) {
             ("reply",),
             move |_, data: &mut DaemonData, ()| {
                 let (mut response, mut mimetype) = (Vec::new(), String::from("Empty"));
-                data.sender.send(Command::GetLatest).expect("peng");
+                data.sender
+                    .send(Command::GetLatest)
+                    .expect("Could not send command");
                 let res = data.receiver.recv();
                 if let Ok(ReverseCommand::SendLatest(text)) = res {
                     response = text.0;
