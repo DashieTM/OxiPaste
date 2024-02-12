@@ -99,7 +99,8 @@ fn get_items(items: &mut IndexMap<Vec<u8>, String>) {
     match result {
         Ok((mut pipe, mimetype)) => {
             let mut contents = vec![];
-            pipe.read_to_end(&mut contents).expect("Could not read from pipe");
+            pipe.read_to_end(&mut contents)
+                .expect("Could not read from pipe");
             if items.get(&contents).is_some() {
                 return;
             }
@@ -117,8 +118,9 @@ fn get_items(items: &mut IndexMap<Vec<u8>, String>) {
 fn start_wl_copy_runner() {
     std::process::Command::new("wl-paste")
         .args([
+            // "-p",
             "-w",
-            "/home/dashie/gits/OxiPaste/target/release/command_runner",
+            "oxipaste_command_runner",
         ])
         .output()
         .expect("Could not run command runner for wl-copy.");

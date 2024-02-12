@@ -14,7 +14,7 @@ name = "oxipaste"
 path = "src/ui/main.rs"
 
 [[bin]]
-name = "command_runner"
+name = "oxipaste_command_runner"
 path = "src/command_runner/main.rs"
 
 [dependencies]
