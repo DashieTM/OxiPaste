@@ -1,4 +1,7 @@
+pub mod config;
 pub mod dbus;
+use config::{parse_config, Config};
+use gtk::glib::once_cell::sync::Lazy;
 use indexmap::IndexMap;
 use std::io::Read;
 use std::sync::mpsc;
@@ -21,6 +24,8 @@ pub enum Command {
     PasteAndDelete(usize),
 }
 
+static CONFIG: Lazy<Config> = Lazy::new(|| parse_config());
+
 fn main() {
     std::thread::spawn(|| {
         start_wl_copy_runner();
@@ -36,7 +41,7 @@ fn main() {
         let len = items.len();
         // clean memory in order to not leak
         // can later be configured with config file or something
-        if len > 100 {
+        if len > CONFIG.max_items {
             let mut new_items = IndexMap::new();
             let iter = items.into_iter();
             for item in iter {
