@@ -1,6 +1,5 @@
 use adw::{prelude::AdwApplicationWindowExt, Application, ApplicationWindow};
 use dbus::blocking::Connection;
-use directories_next as dirs;
 use glib::clone;
 use gtk::{
     gdk::Key,
@@ -15,7 +14,7 @@ use gtk::{
 };
 
 use gtk4_layer_shell::{KeyboardMode, Layer, LayerShell};
-use std::{env, fs, path::PathBuf, rc::Rc, time::Duration};
+use std::{env, rc::Rc, time::Duration};
 
 pub fn main() -> adw::glib::ExitCode {
     let mut css_string = "".to_string();
@@ -40,7 +39,18 @@ pub fn main() -> adw::glib::ExitCode {
             }
         }
     } else {
-        css_string = create_config_dir().to_str().unwrap().into();
+        let config_dir = oxilib::create_config_folder("oxipaste");
+        css_string = oxilib::create_css(
+            &config_dir,
+            "style.css",
+            r#".main-window {
+            opacity: 100%;
+            border-radius: 10px;
+        "#,
+        )
+        .to_str()
+        .expect("Could not process css file.")
+        .into();
     }
     let app = Application::builder()
         .application_id("org.Xetibo.OxiPaste")
@@ -67,31 +77,6 @@ fn load_css(css_string: &String) {
         &context_provider,
         gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
-}
-
-fn create_config_dir() -> PathBuf {
-    let maybe_config_dir = dirs::ProjectDirs::from("com", "dashie", "oxipaste");
-    if maybe_config_dir.is_none() {
-        panic!("Could not get config directory");
-    }
-    let config = maybe_config_dir.unwrap();
-    let config_dir = config.config_dir();
-    if !config_dir.exists() {
-        fs::create_dir(config_dir).expect("Could not create config directory");
-    }
-    let file_path = config_dir.join("style.css");
-    if !file_path.exists() {
-        fs::File::create(&file_path).expect("Could not create css config file");
-        fs::write(
-            &file_path,
-            ".main-window {
-  opacity: 100%;
-  border-radius: 10px;
-}",
-        )
-        .expect("Could not write default values");
-    }
-    file_path
 }
 
 fn run_ui(app: &Application) {

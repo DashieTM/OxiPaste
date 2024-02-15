@@ -825,19 +825,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxilib"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c5691e2a1e9fc28503cf97e8185d4c7e43653415ab1af87c6d3e73a389b5c07"
+dependencies = [
+ "directories-next",
+ "serde",
+ "toml",
+]
+
+[[package]]
 name = "oxipaste"
 version = "0.1.0"
 dependencies = [
  "dbus",
  "dbus-crossroads",
- "directories-next",
  "glib 0.19.0",
  "gtk4",
  "gtk4-layer-shell",
  "indexmap",
  "libadwaita",
+ "oxilib",
  "serde",
- "toml",
  "wl-clipboard-rs",
 ]
 

@@ -1,6 +1,6 @@
 pub mod config;
 pub mod dbus;
-use config::{parse_config, Config};
+use config::{default_config, Config, ConfigOptional};
 use gtk::glib::once_cell::sync::Lazy;
 use indexmap::IndexMap;
 use std::io::Read;
@@ -24,7 +24,10 @@ pub enum Command {
     PasteAndDelete(usize),
 }
 
-static CONFIG: Lazy<Config> = Lazy::new(|| parse_config());
+static CONFIG: Lazy<Config> = Lazy::new(|| {
+    let config_dir = oxilib::create_config_folder("oxipaste");
+    oxilib::create_config::<Config, ConfigOptional>(&config_dir, "config.toml", default_config())
+});
 
 fn main() {
     std::thread::spawn(|| {
