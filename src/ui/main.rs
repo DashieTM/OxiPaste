@@ -88,6 +88,7 @@ fn run_ui(app: &Application) {
     let button_box = gtk::Box::new(Orientation::Horizontal, 5);
     let clear_button = Button::new();
     let items = get_items();
+    let pinned_items = get_pinned_items();
 
     clear_button.connect_clicked(move |button| {
         // (*item_ref).clear();
@@ -132,6 +133,13 @@ fn run_ui(app: &Application) {
 
     button_box.append(&clear_button);
     main_box.append(&button_box);
+
+    for (iter, (data, mimetype)) in pinned_items.into_iter().enumerate() {
+        let loop_ref = window_ref.clone();
+        let item = item(loop_ref, iter, data, mimetype);
+        item.add_css_class("pinned-item");
+        all_items_box.append(&item);
+    }
 
     for (iter, (data, mimetype)) in items.into_iter().enumerate() {
         let loop_ref = window_ref.clone();
@@ -200,6 +208,21 @@ fn get_items() -> Vec<(Vec<u8>, String)> {
     res.unwrap().0
 }
 
+fn get_pinned_items() -> Vec<(Vec<u8>, String)> {
+    type ResultType = Result<(Vec<(Vec<u8>, String)>,), dbus::Error>;
+    let conn = Connection::new_session().unwrap();
+    let proxy = conn.with_proxy(
+        "org.Xetibo.OxiPasteDaemon",
+        "/org/Xetibo/OxiPasteDaemon",
+        Duration::from_millis(1000),
+    );
+    let res: ResultType = proxy.method_call("org.Xetibo.OxiPasteDaemon", "GetPinnedItems", ());
+    if res.is_err() {
+        return Vec::new();
+    }
+    res.unwrap().0
+}
+
 fn delete_all() -> bool {
     let conn = Connection::new_session().unwrap();
     let proxy = conn.with_proxy(
@@ -251,9 +274,6 @@ fn item(loop_ref: Rc<ApplicationWindow>, iter: usize, data: Vec<u8>, mimetype: S
                 key_ref.close();
                 Propagation::Stop
             }
-            // Key::Tab => {
-            //     Propagation::Proceed
-            // }
             _ => Propagation::Proceed,
         }),
     );
@@ -265,7 +285,6 @@ fn item(loop_ref: Rc<ApplicationWindow>, iter: usize, data: Vec<u8>, mimetype: S
     if mimetype.contains("image") {
         image.set_height_request(300);
         set_image(data, &mut image);
-        // image.add_controller(gesture_click);
         selection_button.set_child(Some(&image));
         selection_button.set_hexpand(true);
         selection_button.set_height_request(300);

@@ -27,4 +27,4 @@ gtk = { version = "0.7.3", package = "gtk4" }
 gtk4-layer-shell = "0.2.0"
 adw = { version = "0.5.3", package = "libadwaita" }
 indexmap = "2.2.3"
-oxilib = "0.1.1"
+oxilib = "0.1.2"

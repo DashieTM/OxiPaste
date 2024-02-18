@@ -1,8 +1,7 @@
 use serde::{self, Deserialize};
 
 pub fn default_config() -> &'static str {
-    r#"max_items=100
-        "#
+    r#"max_items=100"#
 }
 
 #[derive(Clone, Debug, Deserialize)]
