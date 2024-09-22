@@ -49,7 +49,7 @@ rustPlatform.buildRustPackage rec {
   cargoLock = {
     inherit lockFile;
     outputHashes = {
-      "oxiced-0.1.0" = "";
+      "oxiced-0.1.0" = "sha256-2HiHUmo68Sl0QrDDiT3v3+ThCYfEgw9DW3HzR+mVTig=";
     };
   };
 
