@@ -1,14 +1,27 @@
-{ rustPlatform
-, rust-bin
-, pkg-config
-, wrapGAppsHook4
-, gtk4
-, gtk4-layer-shell
-, libadwaita
-, dbus
-, lib
-, lockFile
-, ...
+{
+  rustPlatform,
+  #rust-bin,
+  pkg-config,
+  wrapGAppsHook4,
+  gtk4,
+  gtk4-layer-shell,
+  libadwaita,
+  dbus,
+  libGL,
+  libxkbcommon,
+  wayland,
+  libclang,
+  glib,
+  pango,
+
+  cargo,
+  cargo-watch,
+  rustc,
+  rust-analyzer,
+  clippy,
+  lib,
+  lockFile,
+  ...
 }:
 let
   cargoToml = builtins.fromTOML (builtins.readFile ../Cargo.toml);
@@ -25,18 +38,30 @@ rustPlatform.buildRustPackage rec {
     gtk4-layer-shell
     libadwaita
     dbus
+    libGL
+    libxkbcommon
+    wayland
+    libclang
+    glib
+    pango
   ];
 
   cargoLock = {
     inherit lockFile;
+    outputHashes = {
+      "oxiced-0.1.0" = "";
+    };
   };
 
   nativeBuildInputs = [
     pkg-config
     wrapGAppsHook4
-    # (rust-bin.selectLatestNightlyWith
-    # (toolchain: toolchain.default))
-    rust-bin.nightly."2024-05-10".default
+    #(rust-bin.selectLatestNightlyWith (toolchain: toolchain.default))
+    cargo
+    cargo-watch
+    rustc
+    rust-analyzer
+    clippy
   ];
 
   copyLibs = true;

@@ -1,15 +1,19 @@
-use dbus::blocking::Connection;
-use std::time::Duration;
-pub fn main() {
-    let conn = Connection::new_session().unwrap();
-    let proxy = conn.with_proxy(
-        "org.Xetibo.OxiPasteDaemon",
-        "/org/Xetibo/OxiPasteDaemon",
-        Duration::from_millis(1000),
-    );
-    let res: Result<(bool,), dbus::Error> =
-        proxy.method_call("org.Xetibo.OxiPasteDaemon", "Copy", ());
-    if res.is_err() {
-        println!("Could not establish connection to OxiPaste dbus daemon.");
-    }
+use zbus::{proxy, Connection};
+
+#[proxy(
+    interface = "org.Xetibo.OxiPasteDaemon",
+    default_service = "org.Xetibo.OxiPasteDaemon",
+    default_path = "/org/Xetibo/OxiPasteDaemon"
+)]
+#[allow(non_snake_case)]
+trait OxiPasteDbus {
+    async fn Copy(&self) -> zbus::Result<()>;
+}
+
+#[tokio::main]
+async fn main() -> zbus::Result<()> {
+    let connection = Connection::session().await?;
+    let proxy = OxiPasteDbusProxy::new(&connection).await?;
+    proxy.Copy().await?;
+    Ok(())
 }

@@ -1,117 +1,77 @@
-use dbus::blocking::Connection;
 use std::sync::mpsc::{Receiver, Sender};
 
 use crate::{Command, ReverseCommand};
 
-pub fn run(sender: Sender<Command>, receiver: Receiver<ReverseCommand>) {
-    let c = Connection::new_session().unwrap();
-    c.request_name("org.Xetibo.OxiPasteDaemon", false, true, false)
-        .unwrap();
-    let mut cr = dbus_crossroads::Crossroads::new();
-    let token = cr.register("org.Xetibo.OxiPasteDaemon", |c| {
-        c.method(
-            "Copy",
-            (),
-            ("reply",),
-            move |_, data: &mut DaemonData, ()| {
-                let res = data.sender.send(Command::Copy).is_ok();
-                Ok((res,))
-            },
-        );
-        c.method(
-            "Paste",
-            ("index",),
-            ("reply",),
-            move |_, data: &mut DaemonData, (index,): (u32,)| {
-                let res = data.sender.send(Command::Paste(index as usize)).is_ok();
-                Ok((res,))
-            },
-        );
-        c.method(
-            "PasteAndDelete",
-            ("index",),
-            ("reply",),
-            move |_, data: &mut DaemonData, (index,): (u32,)| {
-                let res = data
-                    .sender
-                    .send(Command::PasteAndDelete(index as usize))
-                    .is_ok();
-                Ok((res,))
-            },
-        );
-        c.method(
-            "GetAll",
-            (),
-            ("reply",),
-            move |_, data: &mut DaemonData, ()| {
-                let mut response = Vec::new();
-                data.sender
-                    .send(Command::GetAll)
-                    .expect("Could not send command");
-                let res = data.receiver.recv();
-                if let Ok(ReverseCommand::SendAll(items)) = res {
-                    response = items;
-                }
-                Ok((response,))
-            },
-        );
-        c.method(
-            "GetLatest",
-            (),
-            ("reply",),
-            move |_, data: &mut DaemonData, ()| {
-                let (mut response, mut mimetype) = (Vec::new(), String::from("Empty"));
-                data.sender
-                    .send(Command::GetLatest)
-                    .expect("Could not send command");
-                let res = data.receiver.recv();
-                if let Ok(ReverseCommand::SendLatest(text)) = res {
-                    response = text.0;
-                    mimetype = text.1;
-                }
-                Ok(((response, mimetype),))
-            },
-        );
-        c.method(
-            "DeleteAtIndex",
-            ("index",),
-            ("reply",),
-            move |_, data: &mut DaemonData, (index,): (u32,)| {
-                let response = data
-                    .sender
-                    .send(Command::DeleteAtIndex(index as usize))
-                    .is_ok();
-                Ok((response,))
-            },
-        );
-        c.method(
-            "DeleteAll",
-            (),
-            ("reply",),
-            move |_, data: &mut DaemonData, ()| {
-                let response = data.sender.send(Command::DeleteAll).is_ok();
-                Ok((response,))
-            },
-        );
-        c.method(
-            "ShutDown",
-            (),
-            ("reply",),
-            move |_, data: &mut DaemonData, ()| {
-                let res = data.sender.send(Command::ShutDown).is_ok();
-                Ok((res,))
-            },
-        );
-    });
-    cr.insert(
-        "/org/Xetibo/OxiPasteDaemon",
-        &[token],
-        DaemonData { sender, receiver },
-    );
-    cr.serve(&c).unwrap();
-}
+use std::{error::Error, future::pending};
+use zbus::{connection, interface};
 
-pub struct DaemonData {
+struct OxiPasteDbus {
     sender: Sender<Command>,
     receiver: Receiver<ReverseCommand>,
+}
+
+unsafe impl Send for OxiPasteDbus {}
+unsafe impl Sync for OxiPasteDbus {}
+
+#[interface(name = "org.Xetibo.OxiPasteDaemon")]
+#[allow(non_snake_case)]
+impl OxiPasteDbus {
+    fn Copy(&mut self) {
+        let _ = self.sender.send(Command::Copy);
+    }
+    fn Paste(&mut self, index: u32) {
+        let _ = self.sender.send(Command::Paste(index as usize));
+    }
+    fn PasteAndDelete(&mut self, index: u32) {
+        let _ = self.sender.send(Command::PasteAndDelete(index as usize));
+    }
+    fn GetAll(&mut self) -> Vec<(Vec<u8>, String)> {
+        let mut response = Vec::new();
+        self.sender
+            .send(Command::GetAll)
+            .expect("Could not send command");
+        let res = self.receiver.recv();
+        if let Ok(ReverseCommand::SendAll(items)) = res {
+            response = items;
+        }
+        response
+    }
+    fn GetLatest(&mut self) -> (Vec<u8>, String) {
+        let (mut response, mut mimetype) = (Vec::new(), String::from("Empty"));
+        self.sender
+            .send(Command::GetLatest)
+            .expect("Could not send command");
+        let res = self.receiver.recv();
+        if let Ok(ReverseCommand::SendLatest(text)) = res {
+            response = text.0;
+            mimetype = text.1;
+        }
+        (response, mimetype)
+    }
+    fn DeleteAtIndex(&mut self, index: u32) {
+        let _ = self.sender.send(Command::DeleteAtIndex(index as usize));
+    }
+    fn DeleteAll(&mut self) {
+        let _ = self.sender.send(Command::DeleteAll);
+    }
+    fn ShutDown(&mut self) {
+        let _ = self.sender.send(Command::ShutDown);
+    }
+}
+
+pub async fn run(
+    sender: Sender<Command>,
+    receiver: Receiver<ReverseCommand>,
+) -> Result<(), Box<dyn Error>> {
+    let oxipaste_dbus = OxiPasteDbus { sender, receiver };
+    let _conn = connection::Builder::session()?
+        .name("org.Xetibo.OxiPasteDaemon")?
+        .serve_at("/org/Xetibo/OxiPasteDaemon", oxipaste_dbus)?
+        .build()
+        .await?;
+
+    // Do other things or go to wait forever
+    pending::<()>().await;
+
+    Ok(())
 }

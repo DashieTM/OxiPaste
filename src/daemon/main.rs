@@ -1,8 +1,9 @@
 pub mod config;
 pub mod dbus;
 use config::{default_config, Config, ConfigOptional};
-use gtk::glib::once_cell::sync::Lazy;
+use iced::futures;
 use indexmap::IndexMap;
+use once_cell::sync::Lazy;
 use std::io::Read;
 use std::sync::mpsc;
 use wl_clipboard_rs::copy::{Options, Source};
@@ -36,7 +37,7 @@ fn main() {
     let (sender, receiver) = mpsc::channel::<Command>();
     let (reverse_sender, reverse_receiver) = mpsc::channel::<ReverseCommand>();
     std::thread::spawn(move || {
-        dbus::run(sender, reverse_receiver);
+        let _ = futures::executor::block_on(dbus::run(sender, reverse_receiver));
     });
     let mut items: IndexMap<Vec<u8>, String> = IndexMap::new();
     loop {
@@ -79,15 +80,20 @@ fn main() {
 fn copy_to_clipboard(items: &IndexMap<Vec<u8>, String>, index: usize) {
     let item = items.get_index(index);
     if item.is_none() {
+        eprintln!("Tried to access index {} which is none", index);
         return;
     }
     let item = item.unwrap();
+
     let mut opts = Options::new();
     opts.trim_newline(true);
     opts.clipboard(wl_clipboard_rs::copy::ClipboardType::Regular);
     let res = opts.copy(
         Source::Bytes(item.0.clone().into()),
-        wl_clipboard_rs::copy::MimeType::Autodetect,
+        match item.1.as_str() {
+            "text/plain" => wl_clipboard_rs::copy::MimeType::Text,
+            _ => wl_clipboard_rs::copy::MimeType::Specific(item.1.into()),
+        },
     );
     if res.is_err() {
         eprintln!("Could not copy to clipboard! Make sure you have wl-clipboard installed.");
