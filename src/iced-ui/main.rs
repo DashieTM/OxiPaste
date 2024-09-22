@@ -13,6 +13,9 @@ use iced_layershell::settings::{LayerShellSettings, Settings};
 use iced_layershell::Application;
 use zbus::{proxy, Connection};
 
+mod custom_rich;
+use custom_rich::CustomRich;
+
 //pub fn main() -> iced::Result {
 pub fn main() -> Result<(), iced_layershell::Error> {
     let settings = Settings {
@@ -181,7 +184,16 @@ impl Application for Counter {
 
 fn clipboard_element<'a>(index: i32, contents: &ContentType) -> Row<'a, Message> {
     let content_button = match contents {
-        ContentType::Text(text) => button(rich_text!(span(text.clone())), ButtonVariant::Primary),
+        //ContentType::Text(text) => button(rich_text![span(text),], ButtonVariant::Primary),
+        //ContentType::Text(text) => {
+        //    button(iced::widget::text(text.to_owned()), ButtonVariant::Primary)
+        //}
+        ContentType::Text(text) => button(
+            CustomRich::custom_rich(rich_text![
+                span(text.to_owned()).underline(false) //.link(Message::Copy(index))
+            ]),
+            ButtonVariant::Primary,
+        ),
         ContentType::Image(image_content) => {
             let handle = iced::widget::image::Handle::from_bytes(image_content.clone());
             button(iced::widget::image(handle), ButtonVariant::Primary)
@@ -194,9 +206,11 @@ fn clipboard_element<'a>(index: i32, contents: &ContentType) -> Row<'a, Message>
             .on_press(Message::Copy(index)),
         button("X", ButtonVariant::Primary)
             .on_press(Message::Remove(index))
+            //.align_y(Alignment::Center)
             .padding([20, 5]),
     ]
     .padding(20)
+    .align_y(Alignment::Center)
     .spacing(20)
 }
 
