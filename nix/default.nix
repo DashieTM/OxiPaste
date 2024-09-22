@@ -21,10 +21,23 @@
   clippy,
   lib,
   lockFile,
+  vulkan-loader,
+  wayland-protocols,
+  libX11,
+  libXrandr,
+  libXi,
+  libXcursor,
   ...
 }:
 let
   cargoToml = builtins.fromTOML (builtins.readFile ../Cargo.toml);
+  libPath = lib.makeLibraryPath [
+    libGL
+    libxkbcommon
+    wayland
+    pkg-config
+    libclang
+  ];
 in
 rustPlatform.buildRustPackage rec {
   pname = cargoToml.package.name;
@@ -55,16 +68,45 @@ rustPlatform.buildRustPackage rec {
 
   nativeBuildInputs = [
     pkg-config
-    wrapGAppsHook4
+    #wrapGAppsHook4
     #(rust-bin.selectLatestNightlyWith (toolchain: toolchain.default))
+    wayland
     cargo
     cargo-watch
     rustc
     rust-analyzer
     clippy
+    libGL
+    libxkbcommon
+    libclang
+    glib
+    pango
   ];
 
   copyLibs = true;
+  LD_LIBRARY_PATH = libPath;
+  LIBCLANG_PATH = "${libclang.lib}/lib";
+
+  postFixup =
+    let
+      libPath = lib.makeLibraryPath [
+        libGL
+        vulkan-loader
+        wayland
+        wayland-protocols
+        libxkbcommon
+        libX11
+        libXrandr
+        libXi
+        libXcursor
+      ];
+    in
+    ''
+      patchelf --set-rpath "${libPath}" "$out/bin/oxipaste-iced"
+      patchelf --set-rpath "${libPath}" "$out/bin/oxipaste_daemon"
+      patchelf --set-rpath "${libPath}" "$out/bin/oxipaste_command_runner"
+      patchelf --set-rpath "${libPath}" "$out/bin/oxipaste-iced"
+    '';
 
   meta = with lib; {
     description = "A simple clipboard manager written in Rust and gtk4.";

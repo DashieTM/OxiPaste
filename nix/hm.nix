@@ -1,9 +1,11 @@
-self: { config
-      , pkgs
-      , lib
-      , hm
-      , ...
-      }:
+self:
+{
+  config,
+  pkgs,
+  lib,
+  hm,
+  ...
+}:
 let
   cfg = config.programs.oxipaste;
   defaultPackage = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
