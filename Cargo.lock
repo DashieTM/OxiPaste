@@ -2541,7 +2541,8 @@ dependencies = [
 [[package]]
 name = "oxiced"
 version = "0.1.0"
-source = "git+https://github.com/Xetibo/oxiced?branch=globi#d151e8b8b374c8e73b3ed9856a2f2fd8df6e3361"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be27561e2535bb56f102e6d213fa504a063f2bd171bb701233952224560da7b6"
 dependencies = [
  "arboard",
  "iced",

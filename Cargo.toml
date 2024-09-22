@@ -34,7 +34,8 @@ serde = { version = "1.0.210", features = ["derive"] }
 wl-clipboard-rs = "0.9.0"
 indexmap = "2.5.0"
 oxilib = "0.1.2"
-oxiced = { git = "https://github.com/Xetibo/oxiced", branch = "globi" }
+#oxiced = { git = "https://github.com/Xetibo/oxiced", branch = "globi" }
+oxiced = "0.1.0"
 arboard = "3.4.1"
 iced = { version = "0.13", features = ["advanced", "canvas", "image"] }
 iced_layershell = "0.7.1"
