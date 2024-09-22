@@ -4,6 +4,7 @@ use iced::widget::{column, container, rich_text, row, scrollable, span, Column, 
 use iced::{event, futures, Alignment, Element, Task, Theme};
 use indexmap::IndexMap;
 use oxiced::theme::get_theme;
+use oxiced::widgets::common::darken_color;
 use oxiced::widgets::oxi_button::{button, ButtonVariant};
 use oxiced::widgets::oxi_text_input::text_input;
 
@@ -83,7 +84,9 @@ impl TryInto<LayershellCustomActions> for Message {
 fn box_style(theme: &Theme) -> Style {
     let palette = theme.extended_palette();
     Style {
-        background: Some(iced::Background::Color(palette.background.base.color)),
+        background: Some(iced::Background::Color(darken_color(
+            palette.background.base.color,
+        ))),
         border: iced::border::rounded(10),
         ..container::rounded_box(theme)
     }
@@ -192,11 +195,11 @@ fn clipboard_element<'a>(index: i32, contents: &ContentType) -> Row<'a, Message>
             CustomRich::custom_rich(rich_text![
                 span(text.to_owned()).underline(false) //.link(Message::Copy(index))
             ]),
-            ButtonVariant::Primary,
+            ButtonVariant::Secondary,
         ),
         ContentType::Image(image_content) => {
             let handle = iced::widget::image::Handle::from_bytes(image_content.clone());
-            button(iced::widget::image(handle), ButtonVariant::Primary)
+            button(iced::widget::image(handle), ButtonVariant::Secondary)
         }
     };
     row![
