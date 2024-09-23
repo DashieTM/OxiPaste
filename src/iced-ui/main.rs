@@ -1,3 +1,7 @@
+use std::os::unix::process::CommandExt;
+use std::process::Command;
+
+use context::{context_menu, ContextMenu, ContextMenuMessage, TextContext};
 use iced::keyboard::key::Named;
 use iced::widget::container::Style;
 use iced::widget::{column, container, rich_text, row, scrollable, span, Column, Row};
@@ -14,6 +18,7 @@ use iced_layershell::settings::{LayerShellSettings, Settings};
 use iced_layershell::Application;
 use zbus::{proxy, Connection};
 
+mod context;
 mod custom_rich;
 use custom_rich::CustomRich;
 
@@ -36,14 +41,14 @@ pub fn main() -> Result<(), iced_layershell::Error> {
 
 #[derive(Debug, Clone)]
 enum ContentType {
-    Text(String),
+    Text(TextContext),
     Image(Vec<u8>),
 }
 
 struct Counter {
     theme: Theme,
     filter_text: String,
-    clipboard_content: IndexMap<i32, ContentType>,
+    clipboard_content: IndexMap<i32, (ContentType, ContextMenu)>,
     proxy: OxiPasteDbusProxy<'static>,
 }
 
@@ -71,6 +76,8 @@ enum Message {
     Remove(i32),
     ClearClipboard,
     SetFilterText(String),
+    RunContextCommand(Vec<String>),
+    ContextMenuMessage(i32, ContextMenuMessage),
     Exit,
 }
 
@@ -156,10 +163,23 @@ impl Application for Counter {
                 // TODO make this work with iced exit?
                 std::process::exit(0);
             }
+            Message::RunContextCommand(mut commands) => {
+                //TODO this is not safe
+                let first = commands.remove(0);
+                let res = Command::new(first).args(commands).exec();
+                dbg!(res);
+                std::process::exit(0);
+            }
+            Message::ContextMenuMessage(index, ContextMenuMessage::Expand) => {
+                let context = self.clipboard_content.get_mut(&index).unwrap();
+                context.1.toggled = !context.1.toggled;
+                Task::none()
+            }
             Message::Exit => {
                 // TODO make this work with iced exit?
                 std::process::exit(0);
             }
+            _ => Task::none(),
         }
     }
 
@@ -185,21 +205,32 @@ impl Application for Counter {
     }
 }
 
-fn clipboard_element<'a>(index: i32, contents: &ContentType) -> Row<'a, Message> {
-    let content_button = match contents {
-        //ContentType::Text(text) => button(rich_text![span(text),], ButtonVariant::Primary),
-        //ContentType::Text(text) => {
-        //    button(iced::widget::text(text.to_owned()), ButtonVariant::Primary)
-        //}
-        ContentType::Text(text) => button(
-            CustomRich::custom_rich(rich_text![
-                span(text.to_owned()).underline(false) //.link(Message::Copy(index))
-            ]),
-            ButtonVariant::Secondary,
-        ),
+fn clipboard_element<'a>(
+    index: i32,
+    contents: &ContentType,
+    context: &ContextMenu,
+) -> Row<'a, Message> {
+    let (content_button, context_button) = match contents {
+        ContentType::Text(text_content) => match text_content {
+            TextContext::Text(text) => (
+                button(
+                    CustomRich::custom_rich(rich_text![span(text.to_owned()).underline(false)]),
+                    ButtonVariant::Secondary,
+                ),
+                Some(context_menu(
+                    context,
+                    text_content.get_context_actions(),
+                    index,
+                )),
+            ),
+            TextContext::Address(_) => todo!(),
+        },
         ContentType::Image(image_content) => {
             let handle = iced::widget::image::Handle::from_bytes(image_content.clone());
-            button(iced::widget::image(handle), ButtonVariant::Secondary)
+            (
+                button(iced::widget::image(handle), ButtonVariant::Secondary),
+                None,
+            )
         }
     };
     row![
@@ -211,6 +242,11 @@ fn clipboard_element<'a>(index: i32, contents: &ContentType) -> Row<'a, Message>
             .on_press(Message::Remove(index))
             //.align_y(Alignment::Center)
             .padding([20, 5]),
+        if context_button.is_some() {
+            row![context_button.unwrap()]
+        } else {
+            row![]
+        },
     ]
     .padding(20)
     .align_y(Alignment::Center)
@@ -221,15 +257,18 @@ fn window<'a>(state: &Counter) -> Column<'a, Message> {
     let elements: Vec<Row<'_, Message>> = state
         .clipboard_content
         .iter()
-        .filter(|(_, value)| match value {
-            ContentType::Text(text) => text
-                .to_lowercase()
-                .contains(&state.filter_text.to_lowercase()),
+        .filter(|(_, value)| match &value.0 {
+            ContentType::Text(text_content) => match text_content {
+                TextContext::Text(text) => text
+                    .to_lowercase()
+                    .contains(&state.filter_text.to_lowercase()),
+                TextContext::Address(_) => todo!(),
+            },
             ContentType::Image(_) => {
                 state.filter_text.contains("image") || state.filter_text.is_empty()
             }
         })
-        .map(|(key, value)| clipboard_element(*key, value))
+        .map(|(key, value)| clipboard_element(*key, &value.0, &value.1))
         .collect();
 
     let mut elements_col = column![];
@@ -268,7 +307,9 @@ trait OxiPasteDbus {
     async fn DeleteAll(&self) -> zbus::Result<()>;
 }
 
-async fn get_items(proxy: &OxiPasteDbusProxy<'static>) -> zbus::Result<IndexMap<i32, ContentType>> {
+async fn get_items(
+    proxy: &OxiPasteDbusProxy<'static>,
+) -> zbus::Result<IndexMap<i32, (ContentType, ContextMenu)>> {
     let reply = proxy.GetAll().await?;
 
     let mut map = IndexMap::new();
@@ -276,10 +317,16 @@ async fn get_items(proxy: &OxiPasteDbusProxy<'static>) -> zbus::Result<IndexMap<
         if item.1.contains("text/plain") {
             map.insert(
                 map.len() as i32,
-                ContentType::Text(String::from_utf8(item.0).unwrap()),
+                (
+                    ContentType::Text(TextContext::Text(String::from_utf8(item.0).unwrap())),
+                    ContextMenu { toggled: false },
+                ),
             );
         } else {
-            map.insert(map.len() as i32, ContentType::Image(item.0));
+            map.insert(
+                map.len() as i32,
+                (ContentType::Image(item.0), ContextMenu { toggled: false }),
+            );
         }
     }
     Ok(map)
