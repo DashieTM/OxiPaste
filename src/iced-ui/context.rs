@@ -3,20 +3,20 @@ use std::fmt::Display;
 use iced::widget::{rich_text, span, Button};
 use oxiced::widgets::oxi_button::{button, ButtonVariant};
 
-use crate::{custom_rich::CustomRich, Message};
+use crate::{config::Config, custom_rich::CustomRich, Message};
 
 #[derive(Debug, Clone)]
 pub struct Address {
-    inner: String,
+    pub(crate) inner: String,
 }
 
-#[allow(dead_code)]
 impl Address {
-    pub fn try_build(value: String) -> Option<Self> {
-        if value.starts_with("https::/") {
-            Some(Self { inner: value })
+    pub fn try_build(value: String) -> Result<Self, String> {
+        if value.starts_with("https://") || value.starts_with("/") || value.starts_with("./") {
+            Ok(Self { inner: value })
         } else {
-            None
+            // abuse of error lul
+            Err(value)
         }
     }
 }
@@ -33,20 +33,37 @@ pub enum ImageContext {
 }
 
 impl ImageContext {
-    pub fn get_view_buttons(&self, _: i32) -> (Button<Message>, Option<Button<Message>>) {
+    // TODO remove when not needed
+    //fn apply_value(commands: Vec<Vec<String>>, value: &[u8]) -> Vec<Vec<String>> {
+    //    commands
+    //        .into_iter()
+    //        .map(|mut command| {
+    //            // TODO handle this error instead
+    //            command.push(String::from_utf8_lossy(value).into());
+    //            command
+    //        })
+    //        .collect()
+    //}
+
+    // TODO fix duplication
+    pub fn get_view_buttons(&self, index: i32) -> (Button<Message>, Option<Button<Message>>) {
         match self {
             Self::Regular(image_content) => {
                 let handle = iced::widget::image::Handle::from_bytes(image_content.clone());
                 (
                     button(iced::widget::image(handle), ButtonVariant::Secondary),
-                    None,
+                    Some(button("...", ButtonVariant::Primary).on_press(
+                        Message::SubMessageContext(index, ContextMenuMessage::Expand),
+                    )),
                 )
             }
         }
     }
-    pub fn get_context_actions(&self) -> Vec<Vec<String>> {
+    pub fn get_context_actions(&self, config: &Config) -> Vec<Vec<String>> {
         match self {
-            Self::Regular(_) => Vec::new(),
+            // TODO perhaps copy to clipboard here instead?
+            // right now it requires a call to dbus...
+            Self::Regular(_) => config.ImageContextActions.clone(),
         }
     }
 }
@@ -59,35 +76,42 @@ pub enum TextContext {
 }
 
 impl TextContext {
-    pub fn get_view_buttons(&self, index: i32) -> (Button<Message>, Option<Button<Message>>) {
-        match self {
-            TextContext::Address(_) => todo!(),
-            TextContext::Text(text) => {
-                (
-                    button(
-                        CustomRich::custom_rich(rich_text![span(text.to_owned()).underline(false)]),
-                        ButtonVariant::Secondary,
-                    ),
-                    Some(button("...", ButtonVariant::Primary).on_press(
-                        Message::SubMessageContext(index, ContextMenuMessage::Expand),
-                    )),
-                )
-            }
-        }
+    fn apply_value(commands: Vec<Vec<String>>, value: &String) -> Vec<Vec<String>> {
+        commands
+            .into_iter()
+            .map(|mut command| {
+                command.push(value.clone());
+                command
+            })
+            .collect()
     }
-    pub fn get_context_actions(&self) -> Vec<Vec<String>> {
+
+    pub fn get_view_buttons(&self, index: i32) -> (Button<Message>, Option<Button<Message>>) {
+        let text = match self {
+            TextContext::Address(address) => &address.inner,
+            TextContext::Text(text) => text,
+        };
+        (
+            button(
+                CustomRich::custom_rich(rich_text![span(text.to_owned()).underline(false)]),
+                ButtonVariant::Secondary,
+            ),
+            Some(
+                button("...", ButtonVariant::Primary).on_press(Message::SubMessageContext(
+                    index,
+                    ContextMenuMessage::Expand,
+                )),
+            ),
+        )
+    }
+    // improve this via using actions instead
+    pub fn get_context_actions(&self, config: &Config) -> Vec<Vec<String>> {
         match self {
             TextContext::Address(address) => {
-                vec![
-                    vec!["xdg-open".into(), address.inner.clone()],
-                    vec!["echo".into(), address.inner.clone()],
-                ]
+                Self::apply_value(config.AddressContextActions.clone(), &address.inner)
             }
             TextContext::Text(text) => {
-                vec![
-                    vec!["notify-send".into(), text.clone()],
-                    vec!["echo".into(), text.clone()],
-                ]
+                Self::apply_value(config.PlainTextContextActions.clone(), text)
             }
         }
     }
@@ -106,10 +130,10 @@ impl ContentType {
             ContentType::Image(context) => context.get_view_buttons(index),
         }
     }
-    pub fn get_context_actions(&self) -> Vec<Vec<String>> {
+    pub fn get_context_actions(&self, config: &Config) -> (Vec<Vec<String>>, bool) {
         match self {
-            ContentType::Text(context) => context.get_context_actions(),
-            ContentType::Image(context) => context.get_context_actions(),
+            ContentType::Text(context) => (context.get_context_actions(config), false),
+            ContentType::Image(context) => (context.get_context_actions(config), true),
         }
     }
 }

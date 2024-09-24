@@ -1,11 +1,12 @@
 use std::os::unix::process::CommandExt;
 use std::process::Command;
 
-use context::{ContentType, ContextMenu, ContextMenuMessage, ImageContext, TextContext};
+use config::{create_config, default_config, parse_config, Config};
+use context::{Address, ContentType, ContextMenu, ContextMenuMessage, ImageContext, TextContext};
 use iced::keyboard::key::Named;
 use iced::widget::container::Style;
 use iced::widget::{column, container, row, scrollable, Column, Row};
-use iced::{event, futures, Alignment, Element, Task, Theme};
+use iced::{event, futures, Alignment, Color, Element, Task, Theme};
 use indexmap::IndexMap;
 use oxiced::theme::get_theme;
 use oxiced::widgets::common::darken_color;
@@ -18,8 +19,16 @@ use iced_layershell::settings::{LayerShellSettings, Settings};
 use iced_layershell::Application;
 use zbus::{proxy, Connection};
 
+mod config;
 mod context;
 mod custom_rich;
+
+pub fn into_general_error(
+    error_opt: Option<impl std::error::Error + 'static>,
+) -> Option<Box<dyn std::error::Error>> {
+    let error = error_opt?;
+    Some(Box::new(error) as Box<dyn std::error::Error>)
+}
 
 //pub fn main() -> iced::Result {
 pub fn main() -> Result<(), iced_layershell::Error> {
@@ -28,7 +37,7 @@ pub fn main() -> Result<(), iced_layershell::Error> {
             size: Some((600, 600)),
             exclusive_zone: 0,
             anchor: Anchor::Left | Anchor::Right,
-            binded_output_name: Some("pingpang".into()),
+            binded_output_name: Some("OxiPaste".into()),
             layer: Layer::Overlay,
             margin: (100, 100, 100, 100),
             ..Default::default()
@@ -43,22 +52,40 @@ struct Counter {
     filter_text: String,
     clipboard_content: IndexMap<i32, ContextMenu>,
     proxy: OxiPasteDbusProxy<'static>,
+    error_opt: Option<Box<dyn std::error::Error>>,
+    config: Config,
 }
 
 impl Default for Counter {
     fn default() -> Self {
+        // when we don't have a proxy, we have other issues, aka goodbye
         let proxy = futures::executor::block_on(get_connection()).unwrap();
         let data = futures::executor::block_on(get_items(&proxy));
-        let map = if let Ok(map) = data {
-            map
+        // TODO use this error
+        let (map, _error_opt) = if let Ok(map) = data {
+            (map, None)
         } else {
-            IndexMap::new()
+            (IndexMap::new(), into_general_error(data.err()))
+        };
+        let config_dir = create_config();
+        // TODO enable more than one error...
+        let (config, error_opt) = if let Ok(dir) = config_dir {
+            let config_res = parse_config(&dir);
+            if let Ok(config) = config_res {
+                (config, None)
+            } else {
+                (default_config(), config_res.unwrap_err())
+            }
+        } else {
+            (default_config(), config_dir.unwrap_err())
         };
         Self {
             theme: get_theme(),
             filter_text: "".into(),
             clipboard_content: map,
             proxy, // TODO handle err
+            error_opt,
+            config, //error_opt: into_general_error(Some(zbus::Error::NameTaken)),
         }
     }
 }
@@ -69,7 +96,7 @@ enum Message {
     Remove(i32),
     ClearClipboard,
     SetFilterText(String),
-    RunContextCommand(Vec<String>),
+    RunContextCommand(Vec<String>, bool, i32),
     SubMessageContext(i32, ContextMenuMessage),
     Exit,
 }
@@ -119,7 +146,7 @@ impl Application for Counter {
     }
 
     fn namespace(&self) -> String {
-        String::from("Oxiced")
+        String::from("OxiPaste")
     }
 
     fn subscription(&self) -> iced::Subscription<Self::Message> {
@@ -139,9 +166,11 @@ impl Application for Counter {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Copy(value) => {
-                let _ = futures::executor::block_on(copy_to_clipboard(&self.proxy, value as u32));
+                let res = futures::executor::block_on(copy_to_clipboard(&self.proxy, value as u32));
+                self.error_opt = into_general_error(res.err());
                 // TODO make this work with iced exit?
-                std::process::exit(0);
+                exit(&self.config);
+                Task::none()
             }
             Message::SetFilterText(value) => {
                 self.filter_text = value;
@@ -152,16 +181,24 @@ impl Application for Counter {
                 Task::none()
             }
             Message::ClearClipboard => {
-                let _ = futures::executor::block_on(delete_all(&self.proxy));
+                let res = futures::executor::block_on(delete_all(&self.proxy));
+                self.error_opt = into_general_error(res.err());
                 // TODO make this work with iced exit?
-                std::process::exit(0);
+                exit(&self.config);
+                Task::none()
             }
-            Message::RunContextCommand(mut commands) => {
+            Message::RunContextCommand(mut commands, copy, index) => {
+                if copy {
+                    let res =
+                        futures::executor::block_on(copy_to_clipboard(&self.proxy, index as u32));
+                    self.error_opt = into_general_error(res.err());
+                }
                 //TODO this is not safe
-                let first = commands.remove(0);
-                let res = Command::new(first).args(commands).exec();
-                dbg!(res);
-                std::process::exit(0);
+                let command = commands.remove(0);
+                // TODO handle error?
+                let _ = Command::new(command).args(commands).exec();
+                exit(&self.config);
+                Task::none()
             }
             Message::SubMessageContext(index, ContextMenuMessage::Expand) => {
                 let context = self.clipboard_content.get_mut(&index).unwrap();
@@ -197,10 +234,15 @@ impl Application for Counter {
     }
 }
 
-fn clipboard_element(index: i32, context: &ContextMenu) -> Row<'_, Message> {
+fn clipboard_element<'a>(
+    index: i32,
+    context: &'a ContextMenu,
+    config: &'a Config,
+) -> Row<'a, Message> {
     let (content_button, context_button) = context.content_type.get_view_buttons(index);
     if context.toggled {
-        let choices = context.content_type.get_context_actions();
+        // TODO rework this copy
+        let (choices, copy) = context.content_type.get_context_actions(config);
         row![
             Row::with_children(choices.into_iter().map(|choice| {
                 // TODO not safe
@@ -208,7 +250,7 @@ fn clipboard_element(index: i32, context: &ContextMenu) -> Row<'_, Message> {
                 truncate_string.truncate(5);
 
                 button(iced::widget::text(truncate_string), ButtonVariant::Primary)
-                    .on_press(Message::RunContextCommand(choice))
+                    .on_press(Message::RunContextCommand(choice, copy, index))
                     .into()
             }))
             .spacing(20)
@@ -242,17 +284,19 @@ fn window(state: &Counter) -> Column<Message> {
         .clipboard_content
         .iter()
         .filter(|(_, value)| match &value.content_type {
-            ContentType::Text(text_content) => match text_content {
-                TextContext::Text(text) => text
-                    .to_lowercase()
-                    .contains(&state.filter_text.to_lowercase()),
-                TextContext::Address(_) => todo!(),
-            },
+            ContentType::Text(text_content) => {
+                let text = match text_content {
+                    TextContext::Text(text) => text,
+                    TextContext::Address(address) => &address.inner,
+                };
+                text.to_lowercase()
+                    .contains(&state.filter_text.to_lowercase())
+            }
             ContentType::Image(_) => {
                 state.filter_text.contains("image") || state.filter_text.is_empty()
             }
         })
-        .map(|(key, value)| clipboard_element(*key, value))
+        .map(|(key, value)| clipboard_element(*key, value, &state.config))
         .collect();
 
     let mut elements_col = column![];
@@ -261,22 +305,33 @@ fn window(state: &Counter) -> Column<Message> {
     }
     let elements_scrollable = scrollable(elements_col);
 
-    column![
-        row![
-            text_input(
-                "Enter text to find",
-                state.filter_text.as_str(),
-                Message::SetFilterText
-            ),
-            button("Clear all", ButtonVariant::Primary).on_press(Message::ClearClipboard)
-        ]
-        .padding(20)
-        .spacing(20),
-        elements_scrollable
-    ]
-    .padding(10)
-    .spacing(20)
-    .align_x(Alignment::Center)
+    let error_view = if let Some(error) = &state.error_opt {
+        let text: String = error.to_string();
+        Some(row![
+            iced::widget::text(format!("Error: {}", text)).color(Color::from_rgb(1.0, 0.0, 0.0))
+        ])
+    } else {
+        None
+    };
+
+    Column::new()
+        .push_maybe(error_view)
+        .push(
+            row![
+                text_input(
+                    "Enter text to find",
+                    state.filter_text.as_str(),
+                    Message::SetFilterText
+                ),
+                button("Clear all", ButtonVariant::Primary).on_press(Message::ClearClipboard)
+            ]
+            .padding(20)
+            .spacing(20),
+        )
+        .push(elements_scrollable)
+        .padding(10)
+        .spacing(20)
+        .align_x(Alignment::Center)
 }
 
 #[proxy(
@@ -297,13 +352,23 @@ async fn get_items(proxy: &OxiPasteDbusProxy<'static>) -> zbus::Result<IndexMap<
     let mut map = IndexMap::new();
     for item in reply {
         if item.1.contains("text/plain") {
+            let item_res = String::from_utf8(item.0);
+            if item_res.is_err() {
+                return Err(zbus::Error::Failure(
+                    "Could not convert data from daemon".into(),
+                ));
+            }
+            let address_opt = Address::try_build(item_res.unwrap());
             map.insert(
                 map.len() as i32,
                 ContextMenu {
                     toggled: false,
-                    content_type: ContentType::Text(TextContext::Text(
-                        String::from_utf8(item.0).unwrap(),
-                    )),
+                    content_type: if let Ok(address) = address_opt {
+                        ContentType::Text(TextContext::Address(address))
+                    } else {
+                        // guaranteed error -> aka text, lmao
+                        ContentType::Text(TextContext::Text(address_opt.unwrap_err()))
+                    },
                 },
             );
         } else {
@@ -333,4 +398,10 @@ async fn get_connection() -> zbus::Result<OxiPasteDbusProxy<'static>> {
     let connection = Connection::session().await?;
     let proxy = OxiPasteDbusProxy::new(&connection).await?;
     Ok(proxy)
+}
+
+fn exit(config: &Config) {
+    if !config.keepOpen {
+        std::process::exit(0);
+    }
 }

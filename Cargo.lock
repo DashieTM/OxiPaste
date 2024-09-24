@@ -2672,7 +2672,9 @@ dependencies = [
  "serde",
  "tokio",
  "tokio-macros",
+ "toml",
  "wl-clipboard-rs",
+ "xdg",
  "zbus",
 ]
 
