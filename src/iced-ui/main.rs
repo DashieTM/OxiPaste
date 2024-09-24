@@ -1,10 +1,10 @@
 use std::os::unix::process::CommandExt;
 use std::process::Command;
 
-use context::{context_menu, ContextMenu, ContextMenuMessage, TextContext};
+use context::{ContentType, ContextMenu, ContextMenuMessage, ImageContext, TextContext};
 use iced::keyboard::key::Named;
 use iced::widget::container::Style;
-use iced::widget::{column, container, rich_text, row, scrollable, span, Column, Row};
+use iced::widget::{column, container, row, scrollable, Column, Row};
 use iced::{event, futures, Alignment, Element, Task, Theme};
 use indexmap::IndexMap;
 use oxiced::theme::get_theme;
@@ -20,7 +20,6 @@ use zbus::{proxy, Connection};
 
 mod context;
 mod custom_rich;
-use custom_rich::CustomRich;
 
 //pub fn main() -> iced::Result {
 pub fn main() -> Result<(), iced_layershell::Error> {
@@ -39,16 +38,10 @@ pub fn main() -> Result<(), iced_layershell::Error> {
     Counter::run(settings)
 }
 
-#[derive(Debug, Clone)]
-enum ContentType {
-    Text(TextContext),
-    Image(Vec<u8>),
-}
-
 struct Counter {
     theme: Theme,
     filter_text: String,
-    clipboard_content: IndexMap<i32, (ContentType, ContextMenu)>,
+    clipboard_content: IndexMap<i32, ContextMenu>,
     proxy: OxiPasteDbusProxy<'static>,
 }
 
@@ -77,7 +70,7 @@ enum Message {
     ClearClipboard,
     SetFilterText(String),
     RunContextCommand(Vec<String>),
-    ContextMenuMessage(i32, ContextMenuMessage),
+    SubMessageContext(i32, ContextMenuMessage),
     Exit,
 }
 
@@ -170,16 +163,15 @@ impl Application for Counter {
                 dbg!(res);
                 std::process::exit(0);
             }
-            Message::ContextMenuMessage(index, ContextMenuMessage::Expand) => {
+            Message::SubMessageContext(index, ContextMenuMessage::Expand) => {
                 let context = self.clipboard_content.get_mut(&index).unwrap();
-                context.1.toggled = !context.1.toggled;
+                context.toggled = !context.toggled;
                 Task::none()
             }
             Message::Exit => {
                 // TODO make this work with iced exit?
                 std::process::exit(0);
             }
-            _ => Task::none(),
         }
     }
 
@@ -205,59 +197,51 @@ impl Application for Counter {
     }
 }
 
-fn clipboard_element<'a>(
-    index: i32,
-    contents: &ContentType,
-    context: &ContextMenu,
-) -> Row<'a, Message> {
-    let (content_button, context_button) = match contents {
-        ContentType::Text(text_content) => match text_content {
-            TextContext::Text(text) => (
-                button(
-                    CustomRich::custom_rich(rich_text![span(text.to_owned()).underline(false)]),
-                    ButtonVariant::Secondary,
-                ),
-                Some(context_menu(
-                    context,
-                    text_content.get_context_actions(),
-                    index,
-                )),
-            ),
-            TextContext::Address(_) => todo!(),
-        },
-        ContentType::Image(image_content) => {
-            let handle = iced::widget::image::Handle::from_bytes(image_content.clone());
-            (
-                button(iced::widget::image(handle), ButtonVariant::Secondary),
-                None,
-            )
-        }
-    };
-    row![
-        content_button
-            .padding([20, 5])
-            .width(iced::Length::Fill)
-            .on_press(Message::Copy(index)),
-        button("X", ButtonVariant::Primary)
-            .on_press(Message::Remove(index))
-            //.align_y(Alignment::Center)
-            .padding([20, 5]),
-        if context_button.is_some() {
-            row![context_button.unwrap()]
-        } else {
-            row![]
-        },
-    ]
-    .padding(20)
-    .align_y(Alignment::Center)
-    .spacing(20)
+fn clipboard_element(index: i32, context: &ContextMenu) -> Row<'_, Message> {
+    let (content_button, context_button) = context.content_type.get_view_buttons(index);
+    if context.toggled {
+        let choices = context.content_type.get_context_actions();
+        row![
+            Row::with_children(choices.into_iter().map(|choice| {
+                // TODO not safe
+                let mut truncate_string = choice.first().unwrap().clone();
+                truncate_string.truncate(5);
+
+                button(iced::widget::text(truncate_string), ButtonVariant::Primary)
+                    .on_press(Message::RunContextCommand(choice))
+                    .into()
+            }))
+            .spacing(20)
+            .width(iced::Length::Fill),
+            button("X", ButtonVariant::Primary).on_press(Message::Remove(index)),
+            context_button.unwrap()
+        ]
+        .padding(20)
+        .align_y(Alignment::Center)
+        .spacing(20)
+    } else {
+        row![
+            content_button
+                .width(iced::Length::Fill)
+                .on_press(Message::Copy(index)),
+            button("X", ButtonVariant::Primary).on_press(Message::Remove(index)),
+            if context_button.is_some() {
+                row![context_button.unwrap()]
+            } else {
+                row![]
+            },
+        ]
+        .padding(20)
+        .align_y(Alignment::Center)
+        .spacing(20)
+    }
 }
 
-fn window<'a>(state: &Counter) -> Column<'a, Message> {
+fn window(state: &Counter) -> Column<Message> {
     let elements: Vec<Row<'_, Message>> = state
         .clipboard_content
         .iter()
-        .filter(|(_, value)| match &value.0 {
+        .filter(|(_, value)| match &value.content_type {
             ContentType::Text(text_content) => match text_content {
                 TextContext::Text(text) => text
                     .to_lowercase()
@@ -268,7 +252,7 @@ fn window<'a>(state: &Counter) -> Column<'a, Message> {
                 state.filter_text.contains("image") || state.filter_text.is_empty()
             }
         })
-        .map(|(key, value)| clipboard_element(*key, &value.0, &value.1))
+        .map(|(key, value)| clipboard_element(*key, value))
         .collect();
 
     let mut elements_col = column![];
@@ -307,9 +291,7 @@ trait OxiPasteDbus {
     async fn DeleteAll(&self) -> zbus::Result<()>;
 }
 
-async fn get_items(
-    proxy: &OxiPasteDbusProxy<'static>,
-) -> zbus::Result<IndexMap<i32, (ContentType, ContextMenu)>> {
+async fn get_items(proxy: &OxiPasteDbusProxy<'static>) -> zbus::Result<IndexMap<i32, ContextMenu>> {
     let reply = proxy.GetAll().await?;
 
     let mut map = IndexMap::new();
@@ -317,15 +299,20 @@ async fn get_items(
         if item.1.contains("text/plain") {
             map.insert(
                 map.len() as i32,
-                (
-                    ContentType::Text(TextContext::Text(String::from_utf8(item.0).unwrap())),
-                    ContextMenu { toggled: false },
-                ),
+                ContextMenu {
+                    toggled: false,
+                    content_type: ContentType::Text(TextContext::Text(
+                        String::from_utf8(item.0).unwrap(),
+                    )),
+                },
             );
         } else {
             map.insert(
                 map.len() as i32,
-                (ContentType::Image(item.0), ContextMenu { toggled: false }),
+                ContextMenu {
+                    toggled: false,
+                    content_type: ContentType::Image(ImageContext::Regular(item.0)),
+                },
             );
         }
     }

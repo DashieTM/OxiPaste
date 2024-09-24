@@ -1,19 +1,16 @@
 use std::fmt::Display;
 
-use iced::{
-    overlay::menu::Catalog,
-    widget::{Button, Column, Row, Text},
-    Element, Task, Theme,
-};
-use iced_aw::drop_down;
+use iced::widget::{rich_text, span, Button};
+use oxiced::widgets::oxi_button::{button, ButtonVariant};
 
-use crate::Message;
+use crate::{custom_rich::CustomRich, Message};
 
 #[derive(Debug, Clone)]
 pub struct Address {
     inner: String,
 }
 
+#[allow(dead_code)]
 impl Address {
     pub fn try_build(value: String) -> Option<Self> {
         if value.starts_with("https::/") {
@@ -30,15 +27,54 @@ impl Display for Address {
     }
 }
 
-enum PictureContext {}
+#[derive(Debug, Clone)]
+pub enum ImageContext {
+    Regular(Vec<u8>),
+}
+
+impl ImageContext {
+    pub fn get_view_buttons(&self, _: i32) -> (Button<Message>, Option<Button<Message>>) {
+        match self {
+            Self::Regular(image_content) => {
+                let handle = iced::widget::image::Handle::from_bytes(image_content.clone());
+                (
+                    button(iced::widget::image(handle), ButtonVariant::Secondary),
+                    None,
+                )
+            }
+        }
+    }
+    pub fn get_context_actions(&self) -> Vec<Vec<String>> {
+        match self {
+            Self::Regular(_) => Vec::new(),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum TextContext {
     Address(Address),
     Text(String),
 }
 
 impl TextContext {
+    pub fn get_view_buttons(&self, index: i32) -> (Button<Message>, Option<Button<Message>>) {
+        match self {
+            TextContext::Address(_) => todo!(),
+            TextContext::Text(text) => {
+                (
+                    button(
+                        CustomRich::custom_rich(rich_text![span(text.to_owned()).underline(false)]),
+                        ButtonVariant::Secondary,
+                    ),
+                    Some(button("...", ButtonVariant::Primary).on_press(
+                        Message::SubMessageContext(index, ContextMenuMessage::Expand),
+                    )),
+                )
+            }
+        }
+    }
     pub fn get_context_actions(&self) -> Vec<Vec<String>> {
         match self {
             TextContext::Address(address) => {
@@ -58,34 +94,33 @@ impl TextContext {
 }
 
 #[derive(Debug, Clone)]
+pub enum ContentType {
+    Text(TextContext),
+    Image(ImageContext),
+}
+
+impl ContentType {
+    pub fn get_view_buttons(&self, index: i32) -> (Button<Message>, Option<Button<Message>>) {
+        match self {
+            ContentType::Text(context) => context.get_view_buttons(index),
+            ContentType::Image(context) => context.get_view_buttons(index),
+        }
+    }
+    pub fn get_context_actions(&self) -> Vec<Vec<String>> {
+        match self {
+            ContentType::Text(context) => context.get_context_actions(),
+            ContentType::Image(context) => context.get_context_actions(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct ContextMenu {
     pub(crate) toggled: bool,
+    pub(crate) content_type: ContentType,
 }
 
 #[derive(Debug, Clone)]
 pub enum ContextMenuMessage {
     Expand,
-    Select(String),
-}
-
-pub fn context_menu<'a>(
-    menu: &ContextMenu,
-    choices: Vec<Vec<String>>,
-    index: i32,
-) -> Element<'a, Message> {
-    let underlay = Row::new().push(Button::new(Text::new("expand")).on_press(
-        Message::ContextMenuMessage(index, ContextMenuMessage::Expand),
-    ));
-
-    let overlay = Column::with_children(choices.into_iter().map(|choice| {
-        // TODO not safe
-        let mut truncate_string = choice.first().unwrap().clone();
-        truncate_string.truncate(5);
-        Row::new()
-            .push(Text::new(truncate_string))
-            .push(Button::new(Text::new("choose")).on_press(Message::RunContextCommand(choice)))
-            .into()
-    }));
-    println!("{}", menu.toggled);
-    drop_down::DropDown::new(underlay, overlay, menu.toggled).into()
 }

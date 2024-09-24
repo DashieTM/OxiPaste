@@ -13,6 +13,7 @@ where
     inner: Rich<'a, Link, Theme, Renderer>,
 }
 
+#[allow(clippy::self_named_constructors)]
 impl<'a, Link, Theme, Renderer> CustomRich<'a, Link, Theme, Renderer>
 where
     Link: Clone + 'static,
