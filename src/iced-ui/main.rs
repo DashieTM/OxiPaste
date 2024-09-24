@@ -2,15 +2,18 @@ use std::os::unix::process::CommandExt;
 use std::process::Command;
 
 use config::{create_config, default_config, parse_config, Config};
-use context::{Address, ContentType, ContextMenu, ContextMenuMessage, ImageContext, TextContext};
+use context::{
+    Address, ContentType, ContentTypeId, ContextMenu, ContextMenuMessage, ImageContext, TextContext,
+};
 use iced::keyboard::key::Named;
 use iced::widget::container::Style;
 use iced::widget::{column, container, row, scrollable, Column, Row};
-use iced::{event, futures, Alignment, Color, Element, Task, Theme};
+use iced::{event, futures, Alignment, Color, Element, Length, Task, Theme};
 use indexmap::IndexMap;
 use oxiced::theme::get_theme;
 use oxiced::widgets::common::darken_color;
 use oxiced::widgets::oxi_button::{button, ButtonVariant};
+use oxiced::widgets::oxi_picklist::pick_list;
 use oxiced::widgets::oxi_text_input::text_input;
 
 use iced_layershell::actions::LayershellCustomActions;
@@ -50,6 +53,7 @@ pub fn main() -> Result<(), iced_layershell::Error> {
 struct Counter {
     theme: Theme,
     filter_text: String,
+    filter_content_type: ContentTypeId,
     clipboard_content: IndexMap<i32, ContextMenu>,
     proxy: OxiPasteDbusProxy<'static>,
     error_opt: Option<Box<dyn std::error::Error>>,
@@ -82,6 +86,7 @@ impl Default for Counter {
         Self {
             theme: get_theme(),
             filter_text: "".into(),
+            filter_content_type: ContentTypeId::All,
             clipboard_content: map,
             proxy, // TODO handle err
             error_opt,
@@ -96,6 +101,7 @@ enum Message {
     Remove(i32),
     ClearClipboard,
     SetFilterText(String),
+    SetContentTypeFilter(ContentTypeId),
     RunContextCommand(Vec<String>, bool, i32),
     SubMessageContext(i32, ContextMenuMessage),
     Exit,
@@ -174,6 +180,10 @@ impl Application for Counter {
             }
             Message::SetFilterText(value) => {
                 self.filter_text = value;
+                Task::none()
+            }
+            Message::SetContentTypeFilter(value) => {
+                self.filter_content_type = value;
                 Task::none()
             }
             Message::Remove(index) => {
@@ -285,15 +295,26 @@ fn window(state: &Counter) -> Column<Message> {
         .iter()
         .filter(|(_, value)| match &value.content_type {
             ContentType::Text(text_content) => {
-                let text = match text_content {
-                    TextContext::Text(text) => text,
-                    TextContext::Address(address) => &address.inner,
+                let (text, allow_type) = match text_content {
+                    TextContext::Text(text) => (
+                        text,
+                        (state.filter_content_type == ContentTypeId::All
+                            || state.filter_content_type == ContentTypeId::PlainText),
+                    ),
+                    TextContext::Address(address) => (
+                        &address.inner,
+                        (state.filter_content_type == ContentTypeId::All
+                            || state.filter_content_type == ContentTypeId::AddressText),
+                    ),
                 };
                 text.to_lowercase()
                     .contains(&state.filter_text.to_lowercase())
+                    && allow_type
             }
             ContentType::Image(_) => {
-                state.filter_text.contains("image") || state.filter_text.is_empty()
+                (state.filter_text.contains("image") || state.filter_text.is_empty())
+                    && (state.filter_content_type == ContentTypeId::All
+                        || state.filter_content_type == ContentTypeId::Image)
             }
         })
         .map(|(key, value)| clipboard_element(*key, value, &state.config))
@@ -317,13 +338,27 @@ fn window(state: &Counter) -> Column<Message> {
     Column::new()
         .push_maybe(error_view)
         .push(
-            row![
+            column![
+                row![
+                    pick_list(
+                        [
+                            ContentTypeId::All,
+                            ContentTypeId::PlainText,
+                            ContentTypeId::AddressText,
+                            ContentTypeId::Image
+                        ],
+                        Some(state.filter_content_type),
+                        Message::SetContentTypeFilter
+                    )
+                    .width(Length::Fill),
+                    button("Clear all", ButtonVariant::Primary).on_press(Message::ClearClipboard)
+                ]
+                .spacing(10),
                 text_input(
                     "Enter text to find",
                     state.filter_text.as_str(),
                     Message::SetFilterText
                 ),
-                button("Clear all", ButtonVariant::Primary).on_press(Message::ClearClipboard)
             ]
             .padding(20)
             .spacing(20),

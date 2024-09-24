@@ -117,6 +117,26 @@ impl TextContext {
     }
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum ContentTypeId {
+    PlainText,
+    AddressText,
+    Image,
+    All,
+}
+
+impl Display for ContentTypeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text: String = match self {
+            ContentTypeId::PlainText => "Text".into(),
+            ContentTypeId::AddressText => "Addresses".into(),
+            ContentTypeId::Image => "Images".into(),
+            ContentTypeId::All => "All".into(),
+        };
+        write!(f, "{}", text)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ContentType {
     Text(TextContext),
