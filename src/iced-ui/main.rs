@@ -1,9 +1,7 @@
-use std::os::unix::process::CommandExt;
-use std::process::Command;
-
 use config::{create_config, default_config, parse_config, Config};
 use context::{
-    Address, ContentType, ContentTypeId, ContextMenu, ContextMenuMessage, ImageContext, TextContext,
+    Address, ContentType, ContentTypeId, ContextCommand, ContextMenu, ContextMenuMessage,
+    GetContextActionsResult, ImageContext, TextContext,
 };
 use iced::keyboard::key::Named;
 use iced::widget::container::Style;
@@ -47,10 +45,10 @@ pub fn main() -> Result<(), iced_layershell::Error> {
         },
         ..Default::default()
     };
-    Counter::run(settings)
+    OxiPaste::run(settings)
 }
 
-struct Counter {
+struct OxiPaste {
     theme: Theme,
     filter_text: String,
     filter_content_type: ContentTypeId,
@@ -60,7 +58,7 @@ struct Counter {
     config: Config,
 }
 
-impl Default for Counter {
+impl Default for OxiPaste {
     fn default() -> Self {
         // when we don't have a proxy, we have other issues, aka goodbye
         let proxy = futures::executor::block_on(get_connection()).unwrap();
@@ -102,7 +100,7 @@ enum Message {
     ClearClipboard,
     SetFilterText(String),
     SetContentTypeFilter(ContentTypeId),
-    RunContextCommand(Vec<String>, bool, i32),
+    RunContextCommand(ContextCommand, bool, i32),
     SubMessageContext(i32, ContextMenuMessage),
     Exit,
 }
@@ -136,7 +134,7 @@ fn wrap_in_rounded_box<'a>(
         .into()
 }
 
-impl Application for Counter {
+impl Application for OxiPaste {
     type Message = Message;
     type Flags = ();
     type Theme = Theme;
@@ -197,16 +195,14 @@ impl Application for Counter {
                 exit(&self.config);
                 Task::none()
             }
-            Message::RunContextCommand(mut commands, copy, index) => {
+            Message::RunContextCommand(command, copy, index) => {
                 if copy {
                     let res =
                         futures::executor::block_on(copy_to_clipboard(&self.proxy, index as u32));
                     self.error_opt = into_general_error(res.err());
                 }
-                //TODO this is not safe
-                let command = commands.remove(0);
-                // TODO handle error?
-                let _ = Command::new(command).args(commands).exec();
+                let res = command.run_command(&self, index);
+                self.error_opt = res.err();
                 exit(&self.config);
                 Task::none()
             }
@@ -252,16 +248,22 @@ fn clipboard_element<'a>(
     let (content_button, context_button) = context.content_type.get_view_buttons(index);
     if context.toggled {
         // TODO rework this copy
-        let (choices, copy) = context.content_type.get_context_actions(config);
+        let GetContextActionsResult(choices, copy) =
+            context.content_type.get_context_actions(config);
+        // TODO make this error do shit
         row![
             Row::with_children(choices.into_iter().map(|choice| {
-                // TODO not safe
-                let mut truncate_string = choice.first().unwrap().clone();
-                truncate_string.truncate(5);
+                if choice.is_err() {
+                    row![].into()
+                } else {
+                    let command = choice.unwrap();
+                    let mut label = command.label.clone();
+                    label.truncate(5);
 
-                button(iced::widget::text(truncate_string), ButtonVariant::Primary)
-                    .on_press(Message::RunContextCommand(choice, copy, index))
-                    .into()
+                    button(iced::widget::text(label), ButtonVariant::Primary)
+                        .on_press(Message::RunContextCommand(command, copy, index))
+                        .into()
+                }
             }))
             .spacing(20)
             .width(iced::Length::Fill),
@@ -289,7 +291,7 @@ fn clipboard_element<'a>(
     }
 }
 
-fn window(state: &Counter) -> Column<Message> {
+fn window(state: &OxiPaste) -> Column<Message> {
     let elements: Vec<Row<'_, Message>> = state
         .clipboard_content
         .iter()

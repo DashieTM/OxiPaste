@@ -28,9 +28,18 @@ struct ConfigOptional {
 pub fn default_config() -> Config {
     Config {
         keepOpen: false,
-        PlainTextContextActions: vec![vec!["notify-send".into()]],
-        AddressContextActions: vec![vec!["xdg-open".into()], vec!["notify-send".into()]],
+        PlainTextContextActions: vec![vec![
+            "notify".into(),
+            "notify-send".into(),
+            "{}".into(),
+            "test".into(),
+        ]],
+        AddressContextActions: vec![
+            vec!["open".into(), "xdg-open".into()],
+            vec!["notify".into(), "notify-send".into()],
+        ],
         ImageContextActions: vec![vec![
+            "satty".into(),
             "sh".into(),
             "-c".into(),
             "wl-paste | satty -f -".into(),
