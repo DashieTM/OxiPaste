@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use config::{create_config, default_config, parse_config, Config};
 use context::{
     Address, ContentType, ContentTypeId, ContextCommand, ContextMenu, ContextMenuMessage,
@@ -24,11 +26,38 @@ mod config;
 mod context;
 mod custom_rich;
 
+#[derive(Debug, Clone)]
+pub struct OxiPasteError {
+    message: String,
+}
+
+impl Display for OxiPasteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for OxiPasteError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+
+    fn description(&self) -> &str {
+        &self.message
+    }
+
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        None
+    }
+}
+
 pub fn into_general_error(
     error_opt: Option<impl std::error::Error + 'static>,
-) -> Option<Box<dyn std::error::Error>> {
+) -> Option<OxiPasteError> {
     let error = error_opt?;
-    Some(Box::new(error) as Box<dyn std::error::Error>)
+    Some(OxiPasteError {
+        message: error.to_string(),
+    })
 }
 
 //pub fn main() -> iced::Result {
@@ -54,7 +83,7 @@ struct OxiPaste {
     filter_content_type: ContentTypeId,
     clipboard_content: IndexMap<i32, ContextMenu>,
     proxy: OxiPasteDbusProxy<'static>,
-    error_opt: Option<Box<dyn std::error::Error>>,
+    error_opt: Option<OxiPasteError>,
     config: Config,
 }
 
@@ -201,7 +230,7 @@ impl Application for OxiPaste {
                         futures::executor::block_on(copy_to_clipboard(&self.proxy, index as u32));
                     self.error_opt = into_general_error(res.err());
                 }
-                let res = command.run_command(&self, index);
+                let res = command.run_command(self, index);
                 self.error_opt = res.err();
                 exit(&self.config);
                 Task::none()
@@ -240,21 +269,32 @@ impl Application for OxiPaste {
     }
 }
 
+fn error_view(error_opt: Option<OxiPasteError>) -> Option<Row<'static, Message>> {
+    if let Some(error) = error_opt {
+        let text: String = error.to_string();
+        Some(row![
+            iced::widget::text(format!("Error: {}", text)).color(Color::from_rgb(1.0, 0.0, 0.0))
+        ])
+    } else {
+        None
+    }
+}
+
 fn clipboard_element<'a>(
     index: i32,
     context: &'a ContextMenu,
-    config: &'a Config,
+    state: &'a OxiPaste,
 ) -> Row<'a, Message> {
     let (content_button, context_button) = context.content_type.get_view_buttons(index);
     if context.toggled {
         // TODO rework this copy
         let GetContextActionsResult(choices, copy) =
-            context.content_type.get_context_actions(config);
+            context.content_type.get_context_actions(&state.config);
         // TODO make this error do shit
         row![
             Row::with_children(choices.into_iter().map(|choice| {
                 if choice.is_err() {
-                    row![].into()
+                    error_view(choice.err()).unwrap().into()
                 } else {
                     let command = choice.unwrap();
                     let mut label = command.label.clone();
@@ -319,7 +359,7 @@ fn window(state: &OxiPaste) -> Column<Message> {
                         || state.filter_content_type == ContentTypeId::Image)
             }
         })
-        .map(|(key, value)| clipboard_element(*key, value, &state.config))
+        .map(|(key, value)| clipboard_element(*key, value, state))
         .collect();
 
     let mut elements_col = column![];
@@ -328,17 +368,8 @@ fn window(state: &OxiPaste) -> Column<Message> {
     }
     let elements_scrollable = scrollable(elements_col);
 
-    let error_view = if let Some(error) = &state.error_opt {
-        let text: String = error.to_string();
-        Some(row![
-            iced::widget::text(format!("Error: {}", text)).color(Color::from_rgb(1.0, 0.0, 0.0))
-        ])
-    } else {
-        None
-    };
-
     Column::new()
-        .push_maybe(error_view)
+        .push_maybe(error_view(state.error_opt.clone()))
         .push(
             column![
                 row![

@@ -5,7 +5,7 @@ use std::{
 
 use serde::Deserialize;
 
-use crate::into_general_error;
+use crate::{into_general_error, OxiPasteError};
 
 #[derive(Deserialize, Clone, Default, Debug)]
 #[allow(non_snake_case)]
@@ -47,7 +47,7 @@ pub fn default_config() -> Config {
     }
 }
 
-pub fn parse_config(path: &PathBuf) -> Result<Config, Option<Box<dyn std::error::Error>>> {
+pub fn parse_config(path: &PathBuf) -> Result<Config, Option<OxiPasteError>> {
     let contents = fs::read_to_string(path);
     if contents.is_err() {
         return Err(into_general_error(contents.err()));
@@ -73,7 +73,7 @@ pub fn parse_config(path: &PathBuf) -> Result<Config, Option<Box<dyn std::error:
     })
 }
 
-pub fn create_config_dir() -> Result<PathBuf, Option<Box<dyn std::error::Error>>> {
+pub fn create_config_dir() -> Result<PathBuf, Option<OxiPasteError>> {
     let base_dir = xdg::BaseDirectories::new();
     if let Err(error) = base_dir {
         return Err(into_general_error(Some(error)));
@@ -87,7 +87,7 @@ pub fn create_config_dir() -> Result<PathBuf, Option<Box<dyn std::error::Error>>
     Ok(project_dir)
 }
 
-pub fn create_config() -> Result<PathBuf, Option<Box<dyn std::error::Error>>> {
+pub fn create_config() -> Result<PathBuf, Option<OxiPasteError>> {
     let config_dir = create_config_dir()?;
     let config_file = config_dir.join("config.toml");
     if !config_file.is_file() {

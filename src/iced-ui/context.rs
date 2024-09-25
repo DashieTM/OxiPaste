@@ -8,7 +8,7 @@ use oxiced::widgets::oxi_button::{button, ButtonVariant};
 
 use crate::{
     config::Config, copy_to_clipboard, custom_rich::CustomRich, into_general_error, Message,
-    OxiPaste,
+    OxiPaste, OxiPasteError,
 };
 
 #[derive(Debug, Clone)]
@@ -51,9 +51,7 @@ impl ImageContext {
     //        .collect()
     //}
     //
-    fn apply_value(
-        commands: Vec<Vec<String>>,
-    ) -> Vec<Result<ContextCommand, Box<dyn std::error::Error>>> {
+    fn apply_value(commands: Vec<Vec<String>>) -> Vec<Result<ContextCommand, OxiPasteError>> {
         commands
             .into_iter()
             .map(|command| {
@@ -80,7 +78,7 @@ impl ImageContext {
     pub fn get_context_actions(
         &self,
         config: &Config,
-    ) -> Vec<Result<ContextCommand, Box<dyn std::error::Error>>> {
+    ) -> Vec<Result<ContextCommand, OxiPasteError>> {
         match self {
             // TODO perhaps copy to clipboard here instead?
             // right now it requires a call to dbus...
@@ -100,7 +98,7 @@ impl TextContext {
     fn apply_value(
         commands: Vec<Vec<String>>,
         value: &str,
-    ) -> Vec<Result<ContextCommand, Box<dyn std::error::Error>>> {
+    ) -> Vec<Result<ContextCommand, OxiPasteError>> {
         commands
             .into_iter()
             .map(|command| {
@@ -132,7 +130,7 @@ impl TextContext {
     pub fn get_context_actions(
         &self,
         config: &Config,
-    ) -> Vec<Result<ContextCommand, Box<dyn std::error::Error>>> {
+    ) -> Vec<Result<ContextCommand, OxiPasteError>> {
         match self {
             TextContext::Address(address) => {
                 Self::apply_value(config.AddressContextActions.clone(), &address.inner)
@@ -170,10 +168,7 @@ pub enum ContentType {
     Image(ImageContext),
 }
 
-pub struct GetContextActionsResult(
-    pub Vec<Result<ContextCommand, Box<dyn std::error::Error>>>,
-    pub bool,
-);
+pub struct GetContextActionsResult(pub Vec<Result<ContextCommand, OxiPasteError>>, pub bool);
 
 impl ContentType {
     pub fn get_view_buttons(&self, index: i32) -> (Button<Message>, Option<Button<Message>>) {
@@ -218,23 +213,25 @@ impl ContextCommand {
         mut args: Vec<String>,
         value: &str,
         requires_copy: bool,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Self, OxiPasteError> {
         if args.len() < 2 {
-            return Err(Box::new(zbus::Error::Failure(
-                "Invalid Command: less than 2 arguments provided".into(),
-            )));
+            return Err(OxiPasteError {
+                message: "Invalid Command: less than 2 arguments provided".into(),
+            });
         }
         let label = args.remove(0);
         let command = args.remove(0);
         let mut found = false;
-        for arg in args.iter_mut() {
-            if arg == "{}" {
-                *arg = value.to_owned();
-                found = true;
+        if !requires_copy {
+            for arg in args.iter_mut() {
+                if arg == "{}" {
+                    *arg = value.to_owned();
+                    found = true;
+                }
             }
-        }
-        if !found {
-            args.push(value.to_owned());
+            if !found {
+                args.push(value.to_owned());
+            }
         }
         Ok(Self {
             label,
@@ -244,11 +241,7 @@ impl ContextCommand {
         })
     }
 
-    pub fn run_command(
-        &self,
-        oxipaste: &OxiPaste,
-        index: i32,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn run_command(&self, oxipaste: &OxiPaste, index: i32) -> Result<(), OxiPasteError> {
         if self.requires_copy {
             let res = futures::executor::block_on(copy_to_clipboard(&oxipaste.proxy, index as u32));
             let err_opt = into_general_error(res.err());
