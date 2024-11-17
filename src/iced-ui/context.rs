@@ -55,7 +55,7 @@ impl ImageContext {
         commands
             .into_iter()
             .map(|command| {
-                let res = ContextCommand::from_vec_and_value(command, "", false)?;
+                let res = ContextCommand::from_vec_and_value(command, "", true)?;
                 Ok(res)
             })
             .collect()
@@ -102,7 +102,7 @@ impl TextContext {
         commands
             .into_iter()
             .map(|command| {
-                let res = ContextCommand::from_vec_and_value(command, value, true)?;
+                let res = ContextCommand::from_vec_and_value(command, value, false)?;
                 Ok(res)
             })
             .collect()

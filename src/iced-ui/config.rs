@@ -28,12 +28,7 @@ struct ConfigOptional {
 pub fn default_config() -> Config {
     Config {
         keepOpen: false,
-        PlainTextContextActions: vec![vec![
-            "notify".into(),
-            "notify-send".into(),
-            "{}".into(),
-            "test".into(),
-        ]],
+        PlainTextContextActions: vec![vec!["notify".into(), "notify-send".into()]],
         AddressContextActions: vec![
             vec!["open".into(), "xdg-open".into()],
             vec!["notify".into(), "notify-send".into()],
