@@ -7,7 +7,6 @@
       url = "github:hercules-ci/flake-parts";
       inputs.nixpkgs-lib.follows = "nixpkgs";
     };
-    #rust-overlay.url = "github:oxalica/rust-overlay";
   };
 
   outputs =
@@ -20,9 +19,7 @@
 
       perSystem =
         {
-          config,
           self',
-          inputs',
           pkgs,
           system,
           ...
@@ -30,9 +27,6 @@
         {
           _module.args.pkgs = import self.inputs.nixpkgs {
             inherit system;
-            #overlays = [
-            #  (import inputs.rust-overlay)
-            #];
           };
           devShells.default =
             let
@@ -49,7 +43,6 @@
             pkgs.mkShell {
               inputsFrom = builtins.attrValues self'.packages;
               packages = with pkgs; [
-                #(rust-bin.selectLatestNightlyWith (toolchain: toolchain.default))
                 cargo
                 cargo-watch
                 rustc
