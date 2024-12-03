@@ -8,7 +8,7 @@ use context::{
 use iced::keyboard::key::Named;
 use iced::widget::container::Style;
 use iced::widget::{column, container, row, scrollable, Column, Row};
-use iced::{event, futures, Alignment, Color, Element, Length, Task, Theme};
+use iced::{event, futures, Alignment, Color, Element, Length, Renderer, Task, Theme};
 use indexmap::IndexMap;
 use oxiced::theme::get_theme;
 use oxiced::widgets::common::darken_color;
@@ -17,7 +17,7 @@ use oxiced::widgets::oxi_picklist::pick_list;
 use oxiced::widgets::oxi_text_input::text_input;
 
 use iced_layershell::actions::LayershellCustomActions;
-use iced_layershell::reexport::{Anchor, Layer};
+use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
 use iced_layershell::Application;
 use zbus::{proxy, Connection};
@@ -60,16 +60,15 @@ pub fn into_general_error(
     })
 }
 
-//pub fn main() -> iced::Result {
 pub fn main() -> Result<(), iced_layershell::Error> {
     let settings = Settings {
         layer_settings: LayerShellSettings {
             size: Some((600, 600)),
             exclusive_zone: 0,
             anchor: Anchor::Left | Anchor::Right,
-            binded_output_name: Some("OxiPaste".into()),
             layer: Layer::Overlay,
             margin: (100, 100, 100, 100),
+            keyboard_interactivity: KeyboardInteractivity::Exclusive,
             ..Default::default()
         },
         ..Default::default()
@@ -153,7 +152,7 @@ fn box_style(theme: &Theme) -> Style {
 }
 
 fn wrap_in_rounded_box<'a>(
-    content: impl Into<Element<'a, Message, Theme>>,
+    content: impl Into<Element<'a, Message, Theme, Renderer>>,
 ) -> Element<'a, Message> {
     container(content)
         .style(box_style)
@@ -174,7 +173,7 @@ impl Application for OxiPaste {
             Self {
                 ..Default::default()
             },
-            Task::none(),
+            iced::widget::text_input::focus("search_box"),
         )
     }
 
@@ -391,7 +390,8 @@ fn window(state: &OxiPaste) -> Column<Message> {
                     "Enter text to find",
                     state.filter_text.as_str(),
                     Message::SetFilterText
-                ),
+                )
+                .id("search_box"),
             ]
             .padding(20)
             .spacing(20),

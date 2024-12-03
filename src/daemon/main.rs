@@ -1,13 +1,19 @@
-pub mod config;
-pub mod dbus;
 use config::{default_config, Config, ConfigOptional};
 use iced::futures;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
+use std::fs;
 use std::io::Read;
+use std::path::PathBuf;
 use std::sync::mpsc;
+use std::time::Duration;
 use wl_clipboard_rs::copy::{Options, Source};
 use wl_clipboard_rs::paste::{get_contents, ClipboardType, Error, MimeType, Seat};
+
+pub mod config;
+pub mod dbus;
+// TODO wip
+//pub mod protocol;
 
 pub enum ReverseCommand {
     SendLatest((Vec<u8>, String)),
@@ -15,6 +21,7 @@ pub enum ReverseCommand {
 }
 
 pub enum Command {
+    WriteToFile,
     ShutDown,
     Copy,
     DeleteAtIndex(usize),
@@ -25,9 +32,10 @@ pub enum Command {
     PasteAndDelete(usize),
 }
 
+static CONFIG_DIR: Lazy<PathBuf> = Lazy::new(|| oxilib::create_config_folder("oxipaste"));
+
 static CONFIG: Lazy<Config> = Lazy::new(|| {
-    let config_dir = oxilib::create_config_folder("oxipaste");
-    oxilib::create_config::<Config, ConfigOptional>(&config_dir, "config.toml", default_config())
+    oxilib::create_config::<Config, ConfigOptional>(&CONFIG_DIR, "config.toml", default_config())
 });
 
 fn main() {
@@ -39,10 +47,22 @@ fn main() {
     std::thread::spawn(move || {
         let _ = futures::executor::block_on(dbus::run(sender, reverse_receiver));
     });
-    let mut items: IndexMap<Vec<u8>, String> = IndexMap::new();
+    let mut items: IndexMap<Vec<u8>, String> = get_items_from_file();
+    let mut time = std::time::SystemTime::now();
     loop {
         let result = receiver.recv();
         let len = items.len();
+        let new_time = std::time::SystemTime::now();
+
+        if new_time
+            .duration_since(time)
+            .unwrap_or(Duration::from_millis(0))
+            > Duration::from_secs_f64(300.0)
+        {
+            write_items_to_file(&items);
+        }
+        time = new_time;
+
         // clean memory in order to not leak
         // can later be configured with config file or something
         if len > CONFIG.max_items {
@@ -55,12 +75,21 @@ fn main() {
         }
         if let Ok(command) = result {
             match command {
-                Command::ShutDown => break,
+                Command::WriteToFile => {
+                    write_items_to_file(&items);
+                }
+                Command::ShutDown => {
+                    write_items_to_file(&items);
+                    break;
+                }
                 Command::Copy => get_items(&mut items),
                 Command::DeleteAtIndex(index) => {
                     items.shift_remove_index(index);
                 }
-                Command::DeleteAll => items.clear(),
+                Command::DeleteAll => {
+                    items.clear();
+                    clear_items_file();
+                }
                 Command::GetLatest => reverse_sender
                     .send(ReverseCommand::SendLatest(paste_latest(&mut items)))
                     .expect("Could not send command"),
@@ -75,6 +104,52 @@ fn main() {
             }
         }
     }
+}
+
+fn ensure_items_file() -> PathBuf {
+    let item_file = CONFIG_DIR.join("items");
+    if !item_file.is_file() {
+        fs::File::create(&item_file).expect("Could not create item file.");
+    }
+    item_file
+}
+
+fn clear_items_file() {
+    let item_file = ensure_items_file();
+    let file = fs::File::options()
+        .write(true)
+        .append(false)
+        .open(&item_file)
+        .unwrap();
+    file.set_len(0).expect("Could not set size to 0");
+}
+
+fn write_items_to_file(items: &IndexMap<Vec<u8>, String>) {
+    let item_file = ensure_items_file();
+    for item in items {
+        let str_to_write_opt = String::from_utf8(item.0.to_vec());
+        if let Ok(str_to_write) = str_to_write_opt {
+            fs::write(&item_file, format!("{}<>:<>{}<><>\n", str_to_write, item.1))
+                .expect("Could not write default css content.");
+        }
+    }
+}
+
+fn get_items_from_file() -> IndexMap<Vec<u8>, String> {
+    let mut items = IndexMap::new();
+    let item_file = ensure_items_file();
+    let mut buffer = String::from("");
+    let mut file = fs::File::open(&item_file).unwrap();
+    file.read_to_string(&mut buffer)
+        .expect("Could not read file");
+    let lines: Vec<(&str, &str)> = buffer
+        .split("<><>\n")
+        .filter_map(|elem| elem.split_once("<>:<>"))
+        .collect();
+    for (key, value) in lines {
+        items.insert(key.as_bytes().to_vec(), value.to_string());
+    }
+    items
 }
 
 fn copy_to_clipboard(items: &IndexMap<Vec<u8>, String>, index: usize) {
