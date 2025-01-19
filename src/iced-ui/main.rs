@@ -14,6 +14,7 @@ use oxiced::theme::get_theme;
 use oxiced::widgets::common::darken_color;
 use oxiced::widgets::oxi_button::{button, ButtonVariant};
 use oxiced::widgets::oxi_picklist::pick_list;
+use oxiced::widgets::oxi_svg::{self, SvgStyleVariant};
 use oxiced::widgets::oxi_text_input::text_input;
 
 use iced_layershell::actions::LayershellCustomActions;
@@ -306,7 +307,13 @@ fn clipboard_element<'a>(
             }))
             .spacing(20)
             .width(iced::Length::Fill),
-            button("X", ButtonVariant::Primary).on_press(Message::Remove(index)),
+            button(
+                oxi_svg::svg_from_path(SvgStyleVariant::Primary, "./resources/delete.svg"),
+                ButtonVariant::Primary
+            )
+            .on_press(Message::Remove(index))
+            .width(45)
+            .height(45),
             context_button.unwrap()
         ]
         .padding(20)
@@ -317,7 +324,13 @@ fn clipboard_element<'a>(
             content_button
                 .width(iced::Length::Fill)
                 .on_press(Message::Copy(index)),
-            button("X", ButtonVariant::Primary).on_press(Message::Remove(index)),
+            button(
+                oxi_svg::svg_from_path(SvgStyleVariant::Primary, "./resources/delete.svg"),
+                ButtonVariant::Primary
+            )
+            .on_press(Message::Remove(index))
+            .width(45)
+            .height(45),
             if context_button.is_some() {
                 row![context_button.unwrap()]
             } else {

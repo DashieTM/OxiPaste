@@ -15,3 +15,6 @@ ImageContextActions = [['sh', '-c', 'wl-paste | satty -f -']]
 ## Screenshot
 ![Screenshot of Main Application](./screenshots/home.png?raw=true)
 ![Screenshot of Context](./screenshots/context.png?raw=true)
+
+## License Notices
+All icons used are Material icons made publicly available by Google.

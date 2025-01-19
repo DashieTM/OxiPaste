@@ -34,10 +34,10 @@ serde = { version = "1.0.210", features = ["derive"] }
 wl-clipboard-rs = "0.9.0"
 indexmap = "2.5.0"
 oxilib = "0.1.2"
-#oxiced = { git = "https://github.com/Xetibo/oxiced", branch = "globi" }
-oxiced = "0.1.0"
+oxiced = { git = "https://github.com/Xetibo/oxiced" }
+#oxiced = "0.1.0"
 arboard = "3.4.1"
-iced = { version = "0.13", features = ["advanced", "canvas", "image"] }
+iced = { version = "0.13", features = ["advanced", "canvas", "image", "svg"] }
 iced_layershell = "0.10.1"
 zbus = "5.1.1"
 tokio-macros = "2.4.0"

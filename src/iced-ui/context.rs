@@ -4,7 +4,10 @@ use iced::{
     futures,
     widget::{rich_text, span, Button},
 };
-use oxiced::widgets::oxi_button::{button, ButtonVariant};
+use oxiced::widgets::{
+    oxi_button::{button, ButtonVariant},
+    oxi_svg::{self, SvgStyleVariant},
+};
 
 use crate::{
     config::Config, copy_to_clipboard, custom_rich::CustomRich, into_general_error, Message,
@@ -68,9 +71,21 @@ impl ImageContext {
                 let handle = iced::widget::image::Handle::from_bytes(image_content.clone());
                 (
                     button(iced::widget::image(handle), ButtonVariant::Secondary),
-                    Some(button("...", ButtonVariant::Primary).on_press(
-                        Message::SubMessageContext(index, ContextMenuMessage::Expand),
-                    )),
+                    Some(
+                        button(
+                            oxi_svg::svg_from_path(
+                                SvgStyleVariant::Primary,
+                                "./resources/threedot.svg",
+                            ),
+                            ButtonVariant::Primary,
+                        )
+                        .on_press(Message::SubMessageContext(
+                            index,
+                            ContextMenuMessage::Expand,
+                        ))
+                        .height(45)
+                        .width(45),
+                    ),
                 )
             }
         }
@@ -119,10 +134,16 @@ impl TextContext {
                 ButtonVariant::Secondary,
             ),
             Some(
-                button("...", ButtonVariant::Primary).on_press(Message::SubMessageContext(
+                button(
+                    oxi_svg::svg_from_path(SvgStyleVariant::Primary, "./resources/threedot.svg"),
+                    ButtonVariant::Primary,
+                )
+                .on_press(Message::SubMessageContext(
                     index,
                     ContextMenuMessage::Expand,
-                )),
+                ))
+                .height(45)
+                .width(45),
             ),
         )
     }
