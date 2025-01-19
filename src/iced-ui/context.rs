@@ -42,18 +42,6 @@ pub enum ImageContext {
 }
 
 impl ImageContext {
-    // TODO remove when not needed
-    //fn apply_value(commands: Vec<Vec<String>>, value: &[u8]) -> Vec<Vec<String>> {
-    //    commands
-    //        .into_iter()
-    //        .map(|mut command| {
-    //            // TODO handle this error instead
-    //            command.push(String::from_utf8_lossy(value).into());
-    //            command
-    //        })
-    //        .collect()
-    //}
-    //
     fn apply_value(commands: Vec<Vec<String>>) -> Vec<Result<ContextCommand, OxiPasteError>> {
         commands
             .into_iter()

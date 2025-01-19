@@ -13,7 +13,7 @@ use wl_clipboard_rs::paste::{get_contents, ClipboardType, Error, MimeType, Seat}
 pub mod config;
 pub mod dbus;
 // TODO wip
-//pub mod protocol;
+pub mod protocol;
 
 pub enum ReverseCommand {
     SendLatest((Vec<u8>, String)),

@@ -22,7 +22,7 @@ impl Dispatch<WlRegistry, GlobalListContents> for AppData {
         conn: &Connection,
         qhandle: &QueueHandle<Self>,
     ) {
-        todo!()
+        println!("something");
     }
 }
 
@@ -51,15 +51,16 @@ pub fn get_wl_backend() {
             dbg!(global);
         }
     });
-    //let manager =
-    //    globals.bind::<ZwlrDataControlManagerV1, _, _>(&handle, RangeInclusive::new(0, 1), ());
-    //
-    //if manager.is_err() {
-    //    return;
-    //}
-    //let manager = manager.unwrap();
+    let manager =
+        globals.bind::<ZwlrDataControlManagerV1, _, _>(&handle, RangeInclusive::new(0, 1), ());
 
-    //manager.get_data_device(seat, &handle, udata);
+    if manager.is_err() {
+        return;
+    }
+    let manager = manager.unwrap();
+
+    let mut gg = String::from("pingpang");
+    manager.get_data_device(seat, &handle, gg);
     //let u_data =
-    //manager.create_data_source(&handle, udata)
+    manager.create_data_source(&handle, gg)
 }

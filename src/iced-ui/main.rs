@@ -83,7 +83,7 @@ struct OxiPaste {
     filter_content_type: ContentTypeId,
     clipboard_content: IndexMap<i32, ContextMenu>,
     proxy: OxiPasteDbusProxy<'static>,
-    error_opt: Option<OxiPasteError>,
+    errors: Vec<OxiPasteError>,
     config: Config,
 }
 
@@ -92,14 +92,14 @@ impl Default for OxiPaste {
         // when we don't have a proxy, we have other issues, aka goodbye
         let proxy = futures::executor::block_on(get_connection()).unwrap();
         let data = futures::executor::block_on(get_items(&proxy));
-        // TODO use this error
-        let (map, _error_opt) = if let Ok(map) = data {
+        let mut errors = Vec::new();
+        let (map, error_opt) = if let Ok(map) = data {
             (map, None)
         } else {
             (IndexMap::new(), into_general_error(data.err()))
         };
+        error_opt.into_iter().for_each(|value| errors.push(value));
         let config_dir = create_config();
-        // TODO enable more than one error...
         let (config, error_opt) = if let Ok(dir) = config_dir {
             let config_res = parse_config(&dir);
             if let Ok(config) = config_res {
@@ -110,14 +110,15 @@ impl Default for OxiPaste {
         } else {
             (default_config(), config_dir.unwrap_err())
         };
+        error_opt.into_iter().for_each(|value| errors.push(value));
         Self {
             theme: get_theme(),
             filter_text: "".into(),
             filter_content_type: ContentTypeId::All,
             clipboard_content: map,
-            proxy, // TODO handle err
-            error_opt,
-            config, //error_opt: into_general_error(Some(zbus::Error::NameTaken)),
+            proxy,
+            errors,
+            config,
         }
     }
 }
@@ -197,10 +198,13 @@ impl Application for OxiPaste {
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
+        self.errors.clear();
         match message {
             Message::Copy(value) => {
                 let res = futures::executor::block_on(copy_to_clipboard(&self.proxy, value as u32));
-                self.error_opt = into_general_error(res.err());
+                into_general_error(res.err())
+                    .into_iter()
+                    .for_each(|value| self.errors.push(value));
                 // TODO make this work with iced exit?
                 exit(&self.config);
                 Task::none()
@@ -219,7 +223,9 @@ impl Application for OxiPaste {
             }
             Message::ClearClipboard => {
                 let res = futures::executor::block_on(delete_all(&self.proxy));
-                self.error_opt = into_general_error(res.err());
+                into_general_error(res.err())
+                    .into_iter()
+                    .for_each(|value| self.errors.push(value));
                 // TODO make this work with iced exit?
                 exit(&self.config);
                 Task::none()
@@ -228,10 +234,14 @@ impl Application for OxiPaste {
                 if copy {
                     let res =
                         futures::executor::block_on(copy_to_clipboard(&self.proxy, index as u32));
-                    self.error_opt = into_general_error(res.err());
+                    into_general_error(res.err())
+                        .into_iter()
+                        .for_each(|value| self.errors.push(value));
                 }
                 let res = command.run_command(self, index);
-                self.error_opt = res.err();
+                into_general_error(res.err())
+                    .into_iter()
+                    .for_each(|value| self.errors.push(value));
                 exit(&self.config);
                 Task::none()
             }
@@ -269,15 +279,9 @@ impl Application for OxiPaste {
     }
 }
 
-fn error_view(error_opt: Option<OxiPasteError>) -> Option<Row<'static, Message>> {
-    if let Some(error) = error_opt {
-        let text: String = error.to_string();
-        Some(row![
-            iced::widget::text(format!("Error: {}", text)).color(Color::from_rgb(1.0, 0.0, 0.0))
-        ])
-    } else {
-        None
-    }
+fn error_view(error: OxiPasteError) -> Row<'static, Message> {
+    let text: String = error.to_string();
+    row![iced::widget::text(format!("Error: {}", text)).color(Color::from_rgb(1.0, 0.0, 0.0))]
 }
 
 fn clipboard_element<'a>(
@@ -294,7 +298,7 @@ fn clipboard_element<'a>(
         row![
             Row::with_children(choices.into_iter().map(|choice| {
                 if choice.is_err() {
-                    error_view(choice.err()).unwrap().into()
+                    error_view(choice.err().unwrap()).into()
                 } else {
                     let command = choice.unwrap();
                     let mut label = command.label.clone();
@@ -380,8 +384,7 @@ fn window(state: &OxiPaste) -> Column<Message> {
     }
     let elements_scrollable = scrollable(elements_col);
 
-    Column::new()
-        .push_maybe(error_view(state.error_opt.clone()))
+    let mut col = Column::new()
         .push(
             column![
                 row![
@@ -412,7 +415,14 @@ fn window(state: &OxiPaste) -> Column<Message> {
         .push(elements_scrollable)
         .padding(10)
         .spacing(20)
-        .align_x(Alignment::Center)
+        .align_x(Alignment::Center);
+
+    let error_views = state.errors.clone().into_iter().map(error_view);
+
+    for error in error_views {
+        col = col.push(error);
+    }
+    col
 }
 
 #[proxy(
