@@ -61,9 +61,9 @@ rustPlatform.buildRustPackage rec {
 
   cargoLock = {
     inherit lockFile;
-    outputHashes = {
-      "oxiced-0.1.0" = "";
-    };
+    #outputHashes = {
+    #  "oxiced-0.1.0" = "";
+    #};
   };
 
   nativeBuildInputs = [
