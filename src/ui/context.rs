@@ -2,16 +2,16 @@ use std::{fmt::Display, process::Command};
 
 use iced::{
     futures,
-    widget::{rich_text, span, Button},
+    widget::{Button, rich_text, span},
 };
 use oxiced::widgets::{
-    oxi_button::{button, ButtonVariant},
+    oxi_button::{ButtonVariant, button},
     oxi_svg::{self, SvgStyleVariant},
 };
 
 use crate::{
-    config::Config, copy_to_clipboard, custom_rich::CustomRich, into_general_error, Message,
-    OxiPaste, OxiPasteError,
+    Message, OxiPaste, OxiPasteError, config::Config, copy_to_clipboard, custom_rich::CustomRich,
+    into_general_error, utils::mk_svg,
 };
 
 #[derive(Debug, Clone)]
@@ -63,7 +63,7 @@ impl ImageContext {
                         button(
                             oxi_svg::svg_from_path(
                                 SvgStyleVariant::Primary,
-                                "./resources/threedot.svg",
+                                mk_svg("threedot.svg"),
                             ),
                             ButtonVariant::Primary,
                         )
@@ -123,7 +123,7 @@ impl TextContext {
             ),
             Some(
                 button(
-                    oxi_svg::svg_from_path(SvgStyleVariant::Primary, "./resources/threedot.svg"),
+                    oxi_svg::svg_from_path(SvgStyleVariant::Primary, mk_svg("threedot.svg")),
                     ButtonVariant::Primary,
                 )
                 .on_press(Message::SubMessageContext(

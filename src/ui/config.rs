@@ -69,11 +69,11 @@ pub fn parse_config(path: &PathBuf) -> Result<Config, Option<OxiPasteError>> {
 }
 
 pub fn create_config_dir() -> Result<PathBuf, Option<OxiPasteError>> {
-    let base_dir = xdg::BaseDirectories::new();
-    if let Err(error) = base_dir {
-        return Err(into_general_error(Some(error)));
+    let base_dir = xdg::BaseDirectories::new().get_config_home();
+    if let None = base_dir {
+        return Err(Some(OxiPasteError::new("Could not get config home")));
     }
-    let base_dir = base_dir.unwrap().get_config_home();
+    let base_dir = base_dir.unwrap();
     let project_dir = base_dir.join("oxipaste");
     let res = fs::create_dir_all(&project_dir);
     if let Err(error) = res {

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=OxiPaste
+GenericName=ClipboardManager
+Exec=oxipaste
+Terminal=false
+Type=Application
+Keywords=clipboardmanager;iced;
+Icon=OxiPaste
+Categories=Utility;Iced;
+StartupNotify=false
