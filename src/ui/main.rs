@@ -333,6 +333,7 @@ impl Application for OxiPaste {
             Message::SubMessageContext(index, ContextMenuMessage::Expand) => {
                 let context = self.clipboard_content.get_mut(&index).unwrap();
                 context.toggled = !context.toggled;
+                self.filter();
                 Task::none()
             }
             Message::Exit => {

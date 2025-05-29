@@ -17,12 +17,11 @@ path = "src/command_runner/main.rs"
 name = "oxipaste"
 path = "src/ui/main.rs"
 
-
 [dependencies]
 arboard = "3.5.0"
 iced = { version = "0.13.1", features = ["advanced", "canvas", "image", "svg"] }
 iced_aw = "0.12.2"
-iced_layershell = "0.13.6"
+iced_layershell = "0.12.0"
 indexmap = "2.9.0"
 once_cell = "1.21.3"
 oxiced = "0.4.1"
