@@ -10,8 +10,12 @@ use oxiced::widgets::{
 };
 
 use crate::{
-    Message, OxiPaste, OxiPasteError, config::Config, copy_to_clipboard, custom_rich::CustomRich,
-    into_general_error, utils::mk_svg,
+    Message, OxiPaste, OxiPasteError,
+    config::Config,
+    copy_to_clipboard,
+    custom_rich::CustomRich,
+    into_general_error,
+    utils::{mk_content_button, mk_svg},
 };
 
 #[derive(Debug, Clone)]
@@ -53,12 +57,21 @@ impl ImageContext {
     }
 
     // TODO fix duplication
-    pub fn get_view_buttons(&self, index: i32) -> (Button<Message>, Option<Button<Message>>) {
+    pub fn get_view_buttons(
+        &self,
+        focused_index: usize,
+        current_index: usize,
+        key: i32,
+    ) -> (Button<Message>, Option<Button<Message>>) {
         match self {
             Self::Regular(image_content) => {
                 let handle = iced::widget::image::Handle::from_bytes(image_content.clone());
                 (
-                    button(iced::widget::image(handle), ButtonVariant::Secondary),
+                    mk_content_button(
+                        focused_index,
+                        current_index,
+                        iced::widget::image(handle).into(),
+                    ),
                     Some(
                         button(
                             oxi_svg::svg_from_path(
@@ -67,10 +80,7 @@ impl ImageContext {
                             ),
                             ButtonVariant::Primary,
                         )
-                        .on_press(Message::SubMessageContext(
-                            index,
-                            ContextMenuMessage::Expand,
-                        ))
+                        .on_press(Message::SubMessageContext(key, ContextMenuMessage::Expand))
                         .height(45)
                         .width(45),
                     ),
@@ -111,25 +121,28 @@ impl TextContext {
             .collect()
     }
 
-    pub fn get_view_buttons(&self, index: i32) -> (Button<Message>, Option<Button<Message>>) {
+    pub fn get_view_buttons(
+        &self,
+        focused_index: usize,
+        current_index: usize,
+        key: i32,
+    ) -> (Button<Message>, Option<Button<Message>>) {
         let text = match self {
             TextContext::Address(address) => &address.inner,
             TextContext::Text(text) => text,
         };
         (
-            button(
-                CustomRich::custom_rich(rich_text![span(text.to_owned()).underline(false)]),
-                ButtonVariant::Secondary,
+            mk_content_button(
+                focused_index,
+                current_index,
+                CustomRich::custom_rich(rich_text![span(text.to_owned()).underline(false)]).into(),
             ),
             Some(
                 button(
                     oxi_svg::svg_from_path(SvgStyleVariant::Primary, mk_svg("threedot.svg")),
                     ButtonVariant::Primary,
                 )
-                .on_press(Message::SubMessageContext(
-                    index,
-                    ContextMenuMessage::Expand,
-                ))
+                .on_press(Message::SubMessageContext(key, ContextMenuMessage::Expand))
                 .height(45)
                 .width(45),
             ),
@@ -180,10 +193,19 @@ pub enum ContentType {
 pub struct GetContextActionsResult(pub Vec<Result<ContextCommand, OxiPasteError>>, pub bool);
 
 impl ContentType {
-    pub fn get_view_buttons(&self, index: i32) -> (Button<Message>, Option<Button<Message>>) {
+    pub fn get_view_buttons(
+        &self,
+        focused_index: usize,
+        current_index: usize,
+        key: i32,
+    ) -> (Button<Message>, Option<Button<Message>>) {
         match self {
-            ContentType::Text(context) => context.get_view_buttons(index),
-            ContentType::Image(context) => context.get_view_buttons(index),
+            ContentType::Text(context) => {
+                context.get_view_buttons(focused_index, current_index, key)
+            }
+            ContentType::Image(context) => {
+                context.get_view_buttons(focused_index, current_index, key)
+            }
         }
     }
     pub fn get_context_actions(&self, config: &Config) -> GetContextActionsResult {

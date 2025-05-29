@@ -6,6 +6,7 @@ use context::{
     Address, ContentType, ContentTypeId, ContextCommand, ContextMenu, ContextMenuMessage,
     GetContextActionsResult, ImageContext, TextContext,
 };
+use iced::keyboard::Modifiers;
 use iced::keyboard::key::Named;
 use iced::widget::container::Style;
 use iced::widget::{Column, Row, column, container, row, scrollable};
@@ -23,7 +24,7 @@ use iced_layershell::Application;
 use iced_layershell::actions::LayershellCustomActions;
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
 use iced_layershell::settings::{LayerShellSettings, Settings};
-use utils::{mk_svg, svg_path};
+use utils::{FocusDirection, mk_svg, svg_path};
 use zbus::{Connection, proxy};
 
 mod config;
@@ -95,10 +96,12 @@ struct OxiPaste {
     theme: Theme,
     filter_text: String,
     filter_content_type: ContentTypeId,
+    filtered_content: Vec<(i32, ContextMenu)>,
     clipboard_content: IndexMap<i32, ContextMenu>,
     proxy: OxiPasteDbusProxy<'static>,
     errors: Vec<OxiPasteError>,
     config: Config,
+    focus: usize,
 }
 
 impl Default for OxiPaste {
@@ -107,7 +110,7 @@ impl Default for OxiPaste {
         let proxy = futures::executor::block_on(get_connection()).unwrap();
         let data = futures::executor::block_on(get_items(&proxy));
         let mut errors = Vec::new();
-        let (map, error_opt) = if let Ok(map) = data {
+        let (clipboard_content, error_opt) = if let Ok(map) = data {
             (map, None)
         } else {
             (IndexMap::new(), into_general_error(data.err()))
@@ -125,14 +128,20 @@ impl Default for OxiPaste {
             (default_config(), config_dir.unwrap_err())
         };
         error_opt.into_iter().for_each(|value| errors.push(value));
+        let filtered_content = clipboard_content
+            .iter()
+            .map(|(key, value)| (*key, value.clone()))
+            .collect::<Vec<_>>();
         Self {
             theme: get_theme(),
             filter_text: "".into(),
             filter_content_type: ContentTypeId::All,
-            clipboard_content: map,
+            filtered_content,
+            clipboard_content,
             proxy,
             errors,
             config,
+            focus: 0,
         }
     }
 }
@@ -140,13 +149,16 @@ impl Default for OxiPaste {
 #[derive(Debug, Clone)]
 enum Message {
     Copy(i32),
+    CopyFromKeyboard(i32),
     Remove(i32),
     ClearClipboard,
     SetFilterText(String),
     SetContentTypeFilter(ContentTypeId),
     RunContextCommand(ContextCommand, bool, i32),
     SubMessageContext(i32, ContextMenuMessage),
+    MoveFocus(FocusDirection),
     Exit,
+    Enter,
 }
 
 impl TryInto<LayershellCustomActions> for Message {
@@ -178,6 +190,52 @@ fn wrap_in_rounded_box<'a>(
         .into()
 }
 
+impl OxiPaste {
+    fn copy(&mut self, index: u32) -> Task<Message> {
+        let res = futures::executor::block_on(copy_to_clipboard(&self.proxy, index));
+        into_general_error(res.err())
+            .into_iter()
+            .for_each(|value| self.errors.push(value));
+        // TODO make this work with iced exit?
+        exit(&self.config);
+        Task::none()
+    }
+
+    fn filter(&mut self) {
+        // Reset the focus on filter
+        self.focus = 0;
+        self.filtered_content = self
+            .clipboard_content
+            .iter()
+            .filter(|(_, value)| match &value.content_type {
+                ContentType::Text(text_content) => {
+                    let (text, allow_type) = match text_content {
+                        TextContext::Text(text) => (
+                            text,
+                            (self.filter_content_type == ContentTypeId::All
+                                || self.filter_content_type == ContentTypeId::PlainText),
+                        ),
+                        TextContext::Address(address) => (
+                            &address.inner,
+                            (self.filter_content_type == ContentTypeId::All
+                                || self.filter_content_type == ContentTypeId::AddressText),
+                        ),
+                    };
+                    text.to_lowercase()
+                        .contains(&self.filter_text.to_lowercase())
+                        && allow_type
+                }
+                ContentType::Image(_) => {
+                    (self.filter_text.contains("image") || self.filter_text.is_empty())
+                        && (self.filter_content_type == ContentTypeId::All
+                            || self.filter_content_type == ContentTypeId::Image)
+                }
+            })
+            .map(|(key, value)| (*key, value.clone()))
+            .collect::<Vec<(i32, ContextMenu)>>();
+    }
+}
+
 impl Application for OxiPaste {
     type Message = Message;
     type Flags = ();
@@ -200,13 +258,21 @@ impl Application for OxiPaste {
     fn subscription(&self) -> iced::Subscription<Self::Message> {
         event::listen_with(|event, _status, _id| match event {
             iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-                modifiers: _,
-                key: iced::keyboard::key::Key::Named(Named::Escape),
+                modifiers: modifier,
+                key: iced::keyboard::key::Key::Named(key),
                 modified_key: _,
                 physical_key: _,
                 location: _,
                 text: _,
-            }) => Some(Message::Exit),
+            }) => match key {
+                Named::Escape => Some(Message::Exit),
+                Named::Enter => Some(Message::Enter),
+                Named::Tab => match modifier {
+                    Modifiers::SHIFT => Some(Message::MoveFocus(FocusDirection::Up)),
+                    _ => Some(Message::MoveFocus(FocusDirection::Down)),
+                },
+                _ => None,
+            },
             _ => None,
         })
     }
@@ -214,25 +280,30 @@ impl Application for OxiPaste {
     fn update(&mut self, message: Message) -> Task<Message> {
         self.errors.clear();
         match message {
-            Message::Copy(value) => {
-                let res = futures::executor::block_on(copy_to_clipboard(&self.proxy, value as u32));
-                into_general_error(res.err())
-                    .into_iter()
-                    .for_each(|value| self.errors.push(value));
-                // TODO make this work with iced exit?
-                exit(&self.config);
+            Message::Copy(value) => self.copy(value as u32),
+            Message::CopyFromKeyboard(value) => {
+                let converted_value_res = self.filtered_content.get(value as usize);
+                if let Some(converted_value) = converted_value_res {
+                    return self.copy(converted_value.0 as u32);
+                }
+                self.errors.push(OxiPasteError {
+                    message: "Could not get indexed value".into(),
+                });
                 Task::none()
             }
             Message::SetFilterText(value) => {
                 self.filter_text = value;
+                self.filter();
                 Task::none()
             }
             Message::SetContentTypeFilter(value) => {
                 self.filter_content_type = value;
+                self.filter();
                 Task::none()
             }
             Message::Remove(index) => {
                 self.clipboard_content.shift_remove(&index);
+                self.filter();
                 Task::none()
             }
             Message::ClearClipboard => {
@@ -268,6 +339,13 @@ impl Application for OxiPaste {
                 // TODO make this work with iced exit?
                 std::process::exit(0);
             }
+            Message::MoveFocus(focus_direction) => {
+                self.focus = focus_direction.add(self.focus, self.filtered_content.len());
+                // TODO use when accessiblity is not complete ass
+                //iced::widget::focus_next()
+                Task::none()
+            }
+            Message::Enter => Task::done(Message::CopyFromKeyboard(self.focus as i32)),
         }
     }
 
@@ -299,11 +377,15 @@ fn error_view(error: OxiPasteError) -> Row<'static, Message> {
 }
 
 fn clipboard_element<'a>(
-    index: i32,
+    index: usize,
+    key: i32,
     context: &'a ContextMenu,
     state: &'a OxiPaste,
 ) -> Row<'a, Message> {
-    let (content_button, context_button) = context.content_type.get_view_buttons(index);
+    let (content_button, context_button) =
+        context
+            .content_type
+            .get_view_buttons(state.focus, index, key);
     if context.toggled {
         // TODO rework this copy
         let GetContextActionsResult(choices, copy) =
@@ -319,7 +401,7 @@ fn clipboard_element<'a>(
                     label.truncate(5);
 
                     button(iced::widget::text(label), ButtonVariant::Primary)
-                        .on_press(Message::RunContextCommand(command, copy, index))
+                        .on_press(Message::RunContextCommand(command, copy, key))
                         .into()
                 }
             }))
@@ -329,7 +411,7 @@ fn clipboard_element<'a>(
                 oxi_svg::svg_from_path(SvgStyleVariant::Primary, mk_svg("delete.svg")),
                 ButtonVariant::Primary
             )
-            .on_press(Message::Remove(index))
+            .on_press(Message::Remove(key))
             .width(45)
             .height(45),
             context_button.unwrap()
@@ -341,12 +423,12 @@ fn clipboard_element<'a>(
         row![
             content_button
                 .width(iced::Length::Fill)
-                .on_press(Message::Copy(index)),
+                .on_press(Message::Copy(key)),
             button(
                 oxi_svg::svg_from_path(SvgStyleVariant::Primary, mk_svg("delete.svg")),
                 ButtonVariant::Primary
             )
-            .on_press(Message::Remove(index))
+            .on_press(Message::Remove(key))
             .width(45)
             .height(45),
             if context_button.is_some() {
@@ -363,33 +445,10 @@ fn clipboard_element<'a>(
 
 fn window(state: &OxiPaste) -> Column<Message> {
     let elements: Vec<Row<'_, Message>> = state
-        .clipboard_content
+        .filtered_content
         .iter()
-        .filter(|(_, value)| match &value.content_type {
-            ContentType::Text(text_content) => {
-                let (text, allow_type) = match text_content {
-                    TextContext::Text(text) => (
-                        text,
-                        (state.filter_content_type == ContentTypeId::All
-                            || state.filter_content_type == ContentTypeId::PlainText),
-                    ),
-                    TextContext::Address(address) => (
-                        &address.inner,
-                        (state.filter_content_type == ContentTypeId::All
-                            || state.filter_content_type == ContentTypeId::AddressText),
-                    ),
-                };
-                text.to_lowercase()
-                    .contains(&state.filter_text.to_lowercase())
-                    && allow_type
-            }
-            ContentType::Image(_) => {
-                (state.filter_text.contains("image") || state.filter_text.is_empty())
-                    && (state.filter_content_type == ContentTypeId::All
-                        || state.filter_content_type == ContentTypeId::Image)
-            }
-        })
-        .map(|(key, value)| clipboard_element(*key, value, state))
+        .enumerate()
+        .map(|(index, (key, value))| clipboard_element(index, *key, value, state))
         .collect();
 
     let mut elements_col = column![];
@@ -464,20 +523,26 @@ async fn get_items(proxy: &OxiPasteDbusProxy<'static>) -> zbus::Result<IndexMap<
                 ));
             }
             let address_opt = Address::try_build(item_res.unwrap());
-            map.insert(map.len() as i32, ContextMenu {
-                toggled: false,
-                content_type: if let Ok(address) = address_opt {
-                    ContentType::Text(TextContext::Address(address))
-                } else {
-                    // guaranteed error -> aka text, lmao
-                    ContentType::Text(TextContext::Text(address_opt.unwrap_err()))
+            map.insert(
+                map.len() as i32,
+                ContextMenu {
+                    toggled: false,
+                    content_type: if let Ok(address) = address_opt {
+                        ContentType::Text(TextContext::Address(address))
+                    } else {
+                        // guaranteed error -> aka text, lmao
+                        ContentType::Text(TextContext::Text(address_opt.unwrap_err()))
+                    },
                 },
-            });
+            );
         } else {
-            map.insert(map.len() as i32, ContextMenu {
-                toggled: false,
-                content_type: ContentType::Image(ImageContext::Regular(item.0)),
-            });
+            map.insert(
+                map.len() as i32,
+                ContextMenu {
+                    toggled: false,
+                    content_type: ContentType::Image(ImageContext::Regular(item.0)),
+                },
+            );
         }
     }
     Ok(map)
