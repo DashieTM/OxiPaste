@@ -14,7 +14,6 @@ use iced::{Alignment, Color, Element, Length, Renderer, Task, Theme, event, futu
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use oxiced::theme::get_theme;
-use oxiced::widgets::common::darken_color;
 use oxiced::widgets::oxi_button::{ButtonVariant, button};
 use oxiced::widgets::oxi_picklist::pick_list;
 use oxiced::widgets::oxi_svg::{self, SvgStyleVariant};
@@ -79,9 +78,9 @@ pub fn into_general_error(
 pub fn main() -> Result<(), iced_layershell::Error> {
     let settings = Settings {
         layer_settings: LayerShellSettings {
-            size: Some((600, 600)),
+            size: Some((600, 800)),
             exclusive_zone: 0,
-            anchor: Anchor::Left | Anchor::Right,
+            anchor: Anchor::Left | Anchor::Right | Anchor::Top | Anchor::Bottom,
             layer: Layer::Overlay,
             margin: (100, 100, 100, 100),
             keyboard_interactivity: KeyboardInteractivity::Exclusive,
@@ -171,10 +170,10 @@ impl TryInto<LayershellCustomActions> for Message {
 fn box_style(theme: &Theme) -> Style {
     let palette = theme.extended_palette();
     Style {
-        background: Some(iced::Background::Color(darken_color(
+        background: Some(iced::Background::Color(
             palette.background.base.color,
-        ))),
-        border: iced::border::rounded(10),
+        )),
+        border: iced::border::color(palette.primary.strong.color).width(5).rounded(10),
         ..container::rounded_box(theme)
     }
 }
@@ -186,7 +185,7 @@ fn wrap_in_rounded_box<'a>(
         .style(box_style)
         .align_x(Alignment::Center)
         .padding(50)
-        .max_width(550)
+        .max_width(600)
         .into()
 }
 
