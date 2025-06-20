@@ -13,7 +13,7 @@ use iced::widget::{Column, Row, column, container, row, scrollable};
 use iced::{Alignment, Color, Element, Length, Renderer, Task, Theme, event, futures};
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
-use oxiced::theme::get_theme;
+use oxiced::theme::theme::get_derived_iced_theme;
 use oxiced::widgets::oxi_button::{ButtonVariant, button};
 use oxiced::widgets::oxi_picklist::pick_list;
 use oxiced::widgets::oxi_svg::{self, SvgStyleVariant};
@@ -132,7 +132,7 @@ impl Default for OxiPaste {
             .map(|(key, value)| (*key, value.clone()))
             .collect::<Vec<_>>();
         Self {
-            theme: get_theme(),
+            theme: get_derived_iced_theme(),
             filter_text: "".into(),
             filter_content_type: ContentTypeId::All,
             filtered_content,
@@ -400,7 +400,7 @@ fn clipboard_element<'a>(
                     let mut label = command.label.clone();
                     label.truncate(5);
 
-                    button(iced::widget::text(label), ButtonVariant::Primary)
+                    button(iced::widget::text(label), ButtonVariant::RowEntry)
                         .on_press(Message::RunContextCommand(command, copy, key))
                         .into()
                 }
@@ -409,7 +409,7 @@ fn clipboard_element<'a>(
             .width(iced::Length::Fill),
             button(
                 oxi_svg::svg_from_path(SvgStyleVariant::Primary, mk_svg("delete.svg")),
-                ButtonVariant::Primary
+                ButtonVariant::RowEntry
             )
             .on_press(Message::Remove(key))
             .width(45)
@@ -426,7 +426,7 @@ fn clipboard_element<'a>(
                 .on_press(Message::Copy(key)),
             button(
                 oxi_svg::svg_from_path(SvgStyleVariant::Primary, mk_svg("delete.svg")),
-                ButtonVariant::Primary
+                ButtonVariant::RowEntry
             )
             .on_press(Message::Remove(key))
             .width(45)
@@ -472,7 +472,7 @@ fn window(state: &OxiPaste) -> Column<Message> {
                         Message::SetContentTypeFilter
                     )
                     .width(Length::Fill),
-                    button("Clear all", ButtonVariant::Primary).on_press(Message::ClearClipboard)
+                    button("Clear all", ButtonVariant::RowEntry).on_press(Message::ClearClipboard)
                 ]
                 .spacing(10),
                 text_input(
